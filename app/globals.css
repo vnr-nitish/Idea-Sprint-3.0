@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Marquee animation used by the PPT and announcement banners */
+@keyframes marquee {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+.animate-marquee {
+  display: inline-block;
+  padding-left: 100%;
+  animation: marquee 14s linear infinite;
+}
+
+:root {
+  /* Palette (RGB channels) */
+  --gitam: 0 115 103;
+  --gitam-50: 234 246 243;
+  --gitam-100: 214 239 234;
+  --gitam-200: 174 224 214;
+  --gitam-300: 134 209 194;
+  --gitam-400: 63 184 159;
+  --gitam-500: 0 115 103;
+  --gitam-600: 0 97 85;
+  --gitam-700: 0 71 64;
+  --gitam-800: 0 52 47;
+
+  --antique: 244 228 201;
+  --antique-50: 253 249 242;
+  --antique-100: 250 242 226;
+  --antique-200: 246 233 210;
+}
+
+/* Use gentle defaults for body to match the palette */
+body {
+  background: rgb(var(--antique));
+  color: rgb(var(--gitam-700));
+}
+
+@layer components {
+  .hh-page {
+    @apply min-h-screen bg-antique text-gitam-700;
+  }
+
+  .hh-surface {
+    @apply bg-antique-50 border border-gitam-100 rounded-2xl shadow-lg;
+  }
+
+  .hh-card {
+    @apply bg-antique-50 border border-gitam-100 rounded-2xl shadow-lg;
+  }
+
+  .hh-table-head {
+    @apply bg-gitam-50 text-gitam-700;
+  }
+
+  .hh-btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold bg-gitam text-antique hover:bg-gitam-600 active:bg-gitam-700 transition disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .hh-btn-outline {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg font-semibold bg-antique text-gitam-700 border-2 border-gitam-700 hover:bg-gitam-50 active:bg-gitam-100 transition disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .hh-btn-ghost {
+    @apply inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg font-semibold text-gitam-700 hover:bg-gitam-50 transition disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .hh-input {
+    @apply w-full px-3 py-2 rounded-lg border-2 border-gitam-100 bg-antique/70 text-gitam-700 placeholder:text-gitam-700/50 focus:outline-none focus:border-gitam-600 focus:ring-2 focus:ring-gitam/25 transition;
+  }
+
+  .hh-help {
+    @apply text-sm text-gitam-700/75;
+  }
+
+  .hh-badge {
+    @apply inline-flex items-center px-2 py-1 rounded-md text-xs font-semibold bg-gitam-50 text-gitam-700 border border-gitam-100;
+  }
+
+  .hh-modal-backdrop {
+    @apply fixed inset-0 bg-gitam-700/45 backdrop-blur-sm;
+  }
+
+  .hh-modal {
+    @apply bg-antique-50 border border-gitam-100 rounded-2xl shadow-2xl;
+  }
+}
