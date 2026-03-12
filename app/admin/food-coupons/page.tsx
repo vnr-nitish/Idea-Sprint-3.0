@@ -55,6 +55,35 @@ export default function AdminFoodCouponsPage(){
   },[]);
 
   useEffect(() => {
+    const poll = setInterval(() => {
+      void (async () => {
+        try {
+          if (isSupabaseConfigured()) {
+            const rows = await listTeamsWithMembers();
+            if (rows) {
+              setRegistered(rows);
+            }
+          } else {
+            const r = JSON.parse(localStorage.getItem('registeredTeams') || '[]');
+            setRegistered(Array.isArray(r) ? r : []);
+          }
+        } catch {
+          // ignore
+        }
+
+        try {
+          const stored = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
+          setAssignments(stored || {});
+        } catch {
+          setAssignments({});
+        }
+      })();
+    }, 3000);
+
+    return () => clearInterval(poll);
+  }, []);
+
+  useEffect(() => {
     try {
       const stored = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
       setAssignments(stored || {});

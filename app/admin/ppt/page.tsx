@@ -130,6 +130,22 @@ export default function AdminPPTPage() {
   }, []);
 
   useEffect(() => {
+    const poll = setInterval(() => {
+      if (Object.values(adminUploadingRows).some(Boolean)) return;
+      reload();
+      try {
+        const map = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
+        setAssignments(map || {});
+      } catch {
+        setAssignments({});
+      }
+    }, 3000);
+
+    return () => clearInterval(poll);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminUploadingRows]);
+
+  useEffect(() => {
     const navbar = document.querySelector('nav');
     if (navbar) (navbar as HTMLElement).style.display = 'none';
     return () => {

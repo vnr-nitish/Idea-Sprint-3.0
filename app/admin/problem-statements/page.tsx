@@ -131,6 +131,60 @@ export default function AdminProblemStatementsPage() {
   }, []);
 
   useEffect(() => {
+    const poll = setInterval(() => {
+      if (showModal || editingTeamKey || editingDeadlineKey) return;
+
+      void (async () => {
+        try {
+          if (isSupabaseConfigured()) {
+            const rows = await listTeamsWithMembers();
+            if (rows) setRegistered(rows);
+          } else {
+            const r = JSON.parse(localStorage.getItem('registeredTeams') || '[]');
+            setRegistered(Array.isArray(r) ? r : []);
+          }
+        } catch {
+          // ignore
+        }
+
+        try {
+          const map = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
+          setAssignments(map || {});
+        } catch {
+          setAssignments({});
+        }
+
+        if (isSupabaseConfigured()) {
+          try {
+            const [remoteProblems, remoteSelections] = await Promise.all([
+              listProblemStatements(),
+              listTeamProblemSelections(),
+            ]);
+            if (Array.isArray(remoteProblems)) {
+              setProblems(remoteProblems as ProblemStatement[]);
+              localStorage.setItem('problemStatements', JSON.stringify(remoteProblems));
+            }
+            if (remoteSelections && typeof remoteSelections === 'object') {
+              setTeamSelections(remoteSelections);
+            }
+          } catch {
+            // ignore
+          }
+        } else {
+          try {
+            const ps = JSON.parse(localStorage.getItem('problemStatements') || '[]');
+            setProblems(Array.isArray(ps) ? ps : []);
+          } catch {
+            setProblems([]);
+          }
+        }
+      })();
+    }, 3000);
+
+    return () => clearInterval(poll);
+  }, [showModal, editingTeamKey, editingDeadlineKey]);
+
+  useEffect(() => {
     (async () => {
       try {
         if (isSupabaseConfigured()) {

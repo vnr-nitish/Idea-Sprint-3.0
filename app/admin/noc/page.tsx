@@ -83,6 +83,24 @@ export default function AdminNOCPage(){
   },[]);
 
   useEffect(() => {
+    const poll = setInterval(() => {
+      if (Object.values(adminUploadingRows).some(Boolean)) return;
+      reloadRegistered();
+      try {
+        const map = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
+        setAssignments(map || {});
+      } catch {
+        setAssignments({});
+      }
+      if (isSupabaseConfigured()) {
+        void refreshBackendUploads();
+      }
+    }, 3000);
+
+    return () => clearInterval(poll);
+  }, [adminUploadingRows, registered]);
+
+  useEffect(() => {
     try {
       const map = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
       setAssignments(map || {});

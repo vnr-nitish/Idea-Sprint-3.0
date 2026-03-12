@@ -184,6 +184,40 @@ export default function AdminSpocPage() {
   }, [router]);
 
   useEffect(() => {
+    const poll = setInterval(() => {
+      void (async () => {
+        try {
+          if (isSupabaseConfigured()) {
+            const [rows, remoteSpocs, remoteAssignments] = await Promise.all([
+              listTeamsWithMembers(),
+              listReportingSpocs(),
+              listReportingAssignments(),
+            ]);
+            if (Array.isArray(rows)) setTeams(rows);
+            if (Array.isArray(remoteSpocs)) {
+              setSpocs(remoteSpocs as Spoc[]);
+              writeJson(SPOCS_KEY, remoteSpocs);
+            }
+            if (remoteAssignments && typeof remoteAssignments === 'object') {
+              setAssignments(remoteAssignments as Record<string, ReportingAssignment>);
+              writeJson(ASSIGNMENTS_KEY, remoteAssignments);
+            }
+            return;
+          }
+        } catch {
+          // fall back to local
+        }
+
+        setTeams(readJson<any[]>('registeredTeams', []));
+        setSpocs(readJson<Spoc[]>(SPOCS_KEY, []));
+        setAssignments(readJson<Record<string, ReportingAssignment>>(ASSIGNMENTS_KEY, {}));
+      })();
+    }, 3000);
+
+    return () => clearInterval(poll);
+  }, []);
+
+  useEffect(() => {
     // Keep draft in sync with saved assignments.
     const next: Record<string, string> = {};
     Object.entries(assignments || {}).forEach(([teamName, a]) => {

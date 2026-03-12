@@ -163,6 +163,61 @@ export default function AdminReportingPage() {
     load();
   }, [ok]);
 
+  useEffect(() => {
+    if (!ok) return;
+
+    const poll = setInterval(() => {
+      const hasEditing = Object.values(editing).some(Boolean);
+      const hasSelection = Object.values(selected).some(Boolean);
+      if (hasEditing || hasSelection) return;
+
+      void (async () => {
+        let rows: any[] | null = null;
+        try {
+          if (isSupabaseConfigured()) {
+            rows = await listTeamsWithMembers();
+          }
+        } catch {
+          rows = null;
+        }
+
+        if (!Array.isArray(rows) || rows.length === 0) {
+          rows = readLocalJSON<any[]>('registeredTeams', []);
+        }
+        setTeams(Array.isArray(rows) ? rows : []);
+
+        let latestAssignments: Record<string, ReportingAssignment> = readLocalJSON<Record<string, ReportingAssignment>>('reportingAssignments', {});
+        if (isSupabaseConfigured()) {
+          try {
+            const remote = await listReportingAssignments();
+            if (remote && typeof remote === 'object') {
+              latestAssignments = remote as Record<string, ReportingAssignment>;
+              localStorage.setItem('reportingAssignments', JSON.stringify(remote));
+            }
+          } catch {
+            // keep local fallback
+          }
+        }
+        setAssignments(latestAssignments);
+
+        const nextDrafts: Record<string, ReportingAssignment> = {};
+        (rows || []).forEach((t: any) => {
+          const teamName = String(t?.teamName || '');
+          if (!teamName) return;
+          const existing = latestAssignments?.[teamName] || {};
+          nextDrafts[teamName] = {
+            venue: existing.venue || '',
+            date: existing.date || '',
+            time: existing.time || '',
+          };
+        });
+        setDrafts(nextDrafts);
+      })();
+    }, 3000);
+
+    return () => clearInterval(poll);
+  }, [ok, editing, selected]);
+
   const normalizedTeams: TeamRow[] = useMemo(() => {
     return (teams || [])
       .map((t: any) => {
