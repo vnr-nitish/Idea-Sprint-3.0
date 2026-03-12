@@ -12,6 +12,7 @@ import {
   upsertNoc,
 } from '@/lib/nocBackend';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
+import { refreshCurrentTeamSession } from '@/lib/teamSession';
 
 type UploadFile = {
   name: string;
@@ -150,10 +151,10 @@ export default function NOCPage() {
 
   const refreshFromBackend = async () => {
     try {
-      const current = JSON.parse(localStorage.getItem('currentTeam') || 'null');
+      const current = await refreshCurrentTeamSession();
       if (!current?.team) return;
 
-      const resolvedMemberId = current.memberId || current.identifier || current.identifierNormalized || current.id || null;
+      const resolvedMemberId = current.memberId || current.identifier || current.identifierNormalized || null;
       setTeamData(current.team);
       setCurrentMemberId(resolvedMemberId ? String(resolvedMemberId) : null);
 
@@ -199,9 +200,9 @@ export default function NOCPage() {
 
   useEffect(() => {
     if (isSupabaseConfigured()) {
-      refreshFromBackend();
+      void refreshFromBackend();
       const unsubscribe = subscribeAdminNocChanges(() => {
-        refreshFromBackend();
+        void refreshFromBackend();
       });
       return () => {
         unsubscribe();

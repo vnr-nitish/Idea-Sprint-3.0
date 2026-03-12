@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { listFoodCouponsForTeam } from '@/lib/foodBackend';
+import { refreshCurrentTeamSession } from '@/lib/teamSession';
 
 export default function FoodPage() {
   const [teamData, setTeamData] = useState<any>(null);
@@ -10,10 +11,30 @@ export default function FoodPage() {
   const router = useRouter();
 
   useEffect(() => {
-    try {
-      const current = JSON.parse(localStorage.getItem('currentTeam') || 'null');
-      if (current) setTeamData(current.team);
-    } catch (e) { console.warn(e); }
+    const load = async () => {
+      try {
+        const current = await refreshCurrentTeamSession();
+        if (current) setTeamData(current.team);
+      } catch (e) { console.warn(e); }
+    };
+
+    void load();
+
+    const onStorage = (e: StorageEvent) => {
+      if (!e.key || e.key === 'currentTeam') {
+        void load();
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    const poll = setInterval(() => {
+      void load();
+    }, 3000);
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      clearInterval(poll);
+    };
   }, []);
 
   useEffect(() => {

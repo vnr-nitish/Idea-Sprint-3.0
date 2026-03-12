@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { deletePpt, getPpt, getPptDeadline, MAX_PPT_BYTES, subscribePptChanges, upsertPpt } from '@/lib/pptBackend';
+import { refreshCurrentTeamSession } from '@/lib/teamSession';
 
 export default function PPTPage() {
   const MAX_PPT_MB = Math.round(MAX_PPT_BYTES / (1024 * 1024));
@@ -68,46 +69,66 @@ export default function PPTPage() {
   };
 
   useEffect(() => {
-    try {
-      const current = JSON.parse(localStorage.getItem('currentTeam') || 'null');
-      if (current) {
-        setTeamData(current.team);
-        setCurrentIdentifier(current.identifier || current.identifierNormalized || null);
-        setCurrentMemberId(current.memberId || current.identifier || current.identifierNormalized || current.id || null);
-        setTeamId(current.teamId || current.team?.teamId || null);
+    const load = async () => {
+      try {
+        const current = await refreshCurrentTeamSession();
+        if (current) {
+          setTeamData(current.team);
+          setCurrentIdentifier(current.identifier || current.identifierNormalized || null);
+          setCurrentMemberId(current.memberId || current.identifier || current.identifierNormalized || null);
+          setTeamId(current.teamId || current.team?.teamId || null);
 
-        try {
-          const teamName = current.team?.teamName || 'team';
-          const campus = getCampus(current.team) || 'campus';
-          const key = `ppt_${encodeURIComponent(teamName)}_${encodeURIComponent(campus)}`;
-          const raw = localStorage.getItem(key);
-          if (raw) {
-            const parsed = JSON.parse(raw);
-            setFile(parsed.file || null);
-            setUploadedAt(parsed.uploadedAt || null);
-            setPendingFile(null);
+          try {
+            const teamName = current.team?.teamName || 'team';
+            const campus = getCampus(current.team) || 'campus';
+            const key = `ppt_${encodeURIComponent(teamName)}_${encodeURIComponent(campus)}`;
+            const raw = localStorage.getItem(key);
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              setFile(parsed.file || null);
+              setUploadedAt(parsed.uploadedAt || null);
+              setPendingFile(null);
+            }
+          } catch {
+            // ignore
           }
-        } catch {
-          // ignore
         }
-      }
 
-      const lock = localStorage.getItem('ppt_general_deadline_locked');
-      setIsFrozen(lock === 'true');
-      const global = localStorage.getItem('ppt_general_deadline');
-      if (global) {
-        const d = new Date(global);
-        if (!Number.isNaN(d.getTime())) setEffectiveDeadline(d);
+        const lock = localStorage.getItem('ppt_general_deadline_locked');
+        setIsFrozen(lock === 'true');
+        const global = localStorage.getItem('ppt_general_deadline');
+        if (global) {
+          const d = new Date(global);
+          if (!Number.isNaN(d.getTime())) setEffectiveDeadline(d);
+        }
+      } catch (e) {
+        console.warn(e);
       }
-    } catch (e) {
-      console.warn(e);
-    }
+    };
+
+    void load();
+
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === 'currentTeam') {
+        void load();
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    const poll = setInterval(() => {
+      void load();
+    }, 3000);
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      clearInterval(poll);
+    };
   }, []);
 
   const refreshFromBackend = async () => {
     if (!isSupabaseConfigured()) return;
     try {
-      const current = JSON.parse(localStorage.getItem('currentTeam') || 'null');
+      const current = await refreshCurrentTeamSession();
       const tid = current?.teamId || current?.team?.teamId || null;
       const campus = getCampus(current?.team) || '';
       if (!tid || !campus) return;

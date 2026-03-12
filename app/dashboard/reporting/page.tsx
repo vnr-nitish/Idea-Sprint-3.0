@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getReportingAssignmentForTeam } from '@/lib/reportingBackend';
+import { refreshCurrentTeamSession } from '@/lib/teamSession';
 
 const formatDisplayDate = (value: string) => {
   const raw = String(value || '').trim();
@@ -62,10 +63,30 @@ export default function ReportingPage() {
   };
 
   useEffect(() => {
-    try {
-      const current = JSON.parse(localStorage.getItem('currentTeam') || 'null');
-      if (current) setTeamData(current.team);
-    } catch (e) { console.warn(e); }
+    const load = async () => {
+      try {
+        const current = await refreshCurrentTeamSession();
+        if (current) setTeamData(current.team);
+      } catch (e) { console.warn(e); }
+    };
+
+    void load();
+
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === 'currentTeam') {
+        void load();
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    const poll = setInterval(() => {
+      void load();
+    }, 3000);
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      clearInterval(poll);
+    };
   }, []);
 
   useEffect(() => {
