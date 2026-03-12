@@ -1304,9 +1304,10 @@ export default function TeamProfilesPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-sm text-gitam-700">Campus</label>
+                    <div className="min-h-0 overflow-y-auto max-h-[calc(70vh-180px)]">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-sm text-gitam-700">Campus</label>
                         <select
                           value={teamDraft.members[selectedMemberIndex]?.campus || ''}
                           onChange={(e)=>{
@@ -1464,6 +1465,7 @@ export default function TeamProfilesPage() {
                           <option value="Hostel">Hostel</option>
                           <option value="Day Scholar">Day Scholar</option>
                         </select>
+                      </div>
                       </div>
                     </div>
                   </div>
