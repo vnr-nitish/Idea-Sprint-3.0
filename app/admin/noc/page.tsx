@@ -51,7 +51,7 @@ export default function AdminNOCPage(){
   const [editingDeadlineForMember, setEditingDeadlineForMember] = useState<string|null>(null);
   const [deadlineInputValue, setDeadlineInputValue] = useState<string>('');
 
-  const [backendUploads, setBackendUploads] = useState<Record<string, { fileName: string; filePath: string; uploadedAt: string }>>({});
+  const [backendUploads, setBackendUploads] = useState<Record<string, { memberId: string; fileName: string; filePath: string; uploadedAt: string }>>({});
   const [backendCounts, setBackendCounts] = useState<Record<string, number>>({});
   const [adminSelectedFiles, setAdminSelectedFiles] = useState<Record<string, File | null>>({});
   const [adminUploadingRows, setAdminUploadingRows] = useState<Record<string, boolean>>({});
@@ -114,6 +114,40 @@ export default function AdminNOCPage(){
 
   const getMemberId = (m: any): string => String(m?.id || m?.memberId || m?.registrationNumber || m?.email || m?.name || '');
 
+  const normalizeToken = (value: any): string => String(value || '').trim().toLowerCase();
+
+  const memberTokens = (member: any): string[] => {
+    const values = [
+      member?.id,
+      member?.memberId,
+      member?.registrationNumber,
+      member?.email,
+      member?.phoneNumber,
+      member?.phone,
+      member?.name,
+    ];
+    return Array.from(new Set(values.map(normalizeToken).filter(Boolean)));
+  };
+
+  const resolveBackendUploadForMember = (teamName: string, member: any) => {
+    const directId = String(getMemberId(member) || '').trim();
+    if (directId) {
+      const direct = backendUploads[memberKey(teamName, directId)];
+      if (direct) return direct;
+    }
+
+    const tokens = memberTokens(member);
+    if (!tokens.length) return null;
+    const prefix = `${String(teamName || '').trim()}::`;
+
+    const found = Object.entries(backendUploads).find(([key, meta]) => {
+      if (!key.startsWith(prefix)) return false;
+      return tokens.includes(normalizeToken(meta?.memberId));
+    });
+
+    return found ? found[1] : null;
+  };
+
   const refreshBackendUploads = async () => {
     if (!isSupabaseConfigured()) return;
     const teamNames = Array.from(new Set(registered.map((t:any)=>String(t.teamName||'')).filter(Boolean)));
@@ -124,10 +158,10 @@ export default function AdminNOCPage(){
     }
 
     const rows = await listNocUploadsForTeams(teamNames);
-    const map: Record<string, { fileName: string; filePath: string; uploadedAt: string }> = {};
+    const map: Record<string, { memberId: string; fileName: string; filePath: string; uploadedAt: string }> = {};
     const counts: Record<string, number> = {};
     rows.forEach((r) => {
-      map[memberKey(r.teamName, r.memberId)] = { fileName: r.fileName, filePath: r.filePath, uploadedAt: r.uploadedAt };
+      map[memberKey(r.teamName, r.memberId)] = { memberId: r.memberId, fileName: r.fileName, filePath: r.filePath, uploadedAt: r.uploadedAt };
       counts[r.teamName] = (counts[r.teamName] || 0) + 1;
     });
     setBackendUploads(map);
@@ -143,7 +177,9 @@ export default function AdminNOCPage(){
       if (selectedTeam && selectedMemberId) {
         (async () => {
           try {
-            const rec = await getNocBackend(selectedTeam.teamName, String(selectedMemberId));
+            const resolvedMeta = resolveBackendUploadForMember(selectedTeam.teamName, individualView?.member || { id: selectedMemberId, memberId: selectedMemberId });
+            const resolvedMemberId = String(resolvedMeta?.memberId || selectedMemberId);
+            const rec = await getNocBackend(selectedTeam.teamName, resolvedMemberId);
             if (rec) {
               setIndividualView((prev:any) => {
                 if (!prev?.member) return prev;
@@ -295,7 +331,9 @@ export default function AdminNOCPage(){
       if (isSupabaseConfigured()) {
         (async () => {
           try {
-            const rec = await getNocBackend(team.teamName, String(id));
+            const resolvedMeta = resolveBackendUploadForMember(team.teamName, first);
+            const resolvedMemberId = String(resolvedMeta?.memberId || id);
+            const rec = await getNocBackend(team.teamName, resolvedMemberId);
             const fileObj = rec ? { file: { name: rec.fileName, data: rec.url }, uploadedAt: Date.parse(rec.uploadedAt) } : null;
             setIndividualView({ member: first, file: fileObj });
           } catch (e) {
@@ -316,7 +354,9 @@ export default function AdminNOCPage(){
     if (isSupabaseConfigured() && team) {
       (async () => {
         try {
-          const rec = await getNocBackend(team.teamName, String(id));
+          const resolvedMeta = resolveBackendUploadForMember(team.teamName, member);
+          const resolvedMemberId = String(resolvedMeta?.memberId || id);
+          const rec = await getNocBackend(team.teamName, resolvedMemberId);
           const fileObj = rec ? { file: { name: rec.fileName, data: rec.url }, uploadedAt: Date.parse(rec.uploadedAt) } : null;
           setIndividualView({ member, file: fileObj });
 
@@ -398,7 +438,7 @@ export default function AdminNOCPage(){
       const spoc = getSpocForTeam(String(m.teamName || ''));
       const hasFile = Boolean(
         isSupabaseConfigured()
-          ? backendUploads[memberKey(String(m.teamName || ''), String(getMemberId(m)))]
+          ? resolveBackendUploadForMember(String(m.teamName || ''), m)
           : readNocForMember({ teamName: m.teamName, members: [{ campus: m.campus }] }, String(getMemberId(m)))?.file
       );
       if(campusFilter!=='All' && m.campus!==campusFilter) return false;
@@ -1088,7 +1128,7 @@ export default function AdminNOCPage(){
                     const memberId = String(getMemberId(m));
                     const rowKey = `${m.teamName}::${memberId}`;
                     const fileKey = `noc_${encodeURIComponent(m.teamName)}_${encodeURIComponent(memberId)}`;
-                    const backendMeta = isSupabaseConfigured() ? backendUploads[memberKey(m.teamName, memberId)] : null;
+                    const backendMeta = isSupabaseConfigured() ? resolveBackendUploadForMember(m.teamName, m) : null;
                     const fileData = isSupabaseConfigured()
                       ? (backendMeta ? { file: { name: backendMeta.fileName, data: null }, uploadedAt: backendMeta.uploadedAt } : null)
                       : (() => { try{ const raw = localStorage.getItem(fileKey); if(raw){ return JSON.parse(raw); } }catch(e){} return null; })();
@@ -1173,7 +1213,7 @@ export default function AdminNOCPage(){
                                   }
 
                                   try {
-                                    const rec = await getNocBackend(m.teamName, memberId);
+                                    const rec = await getNocBackend(m.teamName, String(backendMeta?.memberId || memberId));
                                     if (rec?.url) {
                                       try {
                                         previewTab.location.replace(rec.url);

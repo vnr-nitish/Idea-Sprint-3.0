@@ -73,8 +73,31 @@ export default function FoodPage() {
 
   const members: any[] = Array.isArray(teamData.members) ? teamData.members : [];
 
-  const getMealStatus = (memberId: string, meal: 'Dinner' | 'Lunch') => {
-    const found = coupons.find((c: any) => String(c.memberId) === String(memberId) && String(c.meal) === meal);
+  const normalizeToken = (value: any) => String(value || '').trim().toLowerCase();
+
+  const memberTokens = (member: any, index: number): string[] => {
+    const values = [
+      member?.id,
+      member?.memberId,
+      member?.registrationNumber,
+      member?.regNo,
+      member?.email,
+      member?.phoneNumber,
+      member?.phone,
+      member?.name,
+      `member${index}`,
+    ];
+    return Array.from(new Set(values.map(normalizeToken).filter(Boolean)));
+  };
+
+  const getMealStatus = (member: any, index: number, meal: 'Dinner' | 'Lunch') => {
+    const tokens = memberTokens(member, index);
+    const found = coupons.find((c: any) => {
+      const couponMemberId = normalizeToken(c?.memberId);
+      const couponMemberName = normalizeToken(c?.memberName);
+      const samePerson = tokens.includes(couponMemberId) || (couponMemberName && tokens.includes(couponMemberName));
+      return samePerson && String(c?.meal || '') === meal;
+    });
     return found?.redeemed ? 'Redeemed' : 'Not redeemed';
   };
 
@@ -102,9 +125,8 @@ export default function FoodPage() {
             </thead>
             <tbody>
               {members.map((m: any, i: number) => {
-                const memberId = m.registrationNumber || m.regNo || m.email || m.name || `member${i}`;
-                const dinnerStatus = getMealStatus(memberId, 'Dinner');
-                const lunchStatus = getMealStatus(memberId, 'Lunch');
+                const dinnerStatus = getMealStatus(m, i, 'Dinner');
+                const lunchStatus = getMealStatus(m, i, 'Lunch');
                 return (
                   <tr key={i} className="hover:bg-gitam-50/40">
                     <td className="p-3 text-gitam-700 border border-gitam-200">{m.name || '-'}</td>
