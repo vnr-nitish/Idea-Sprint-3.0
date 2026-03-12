@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
+import { listReportingAssignments, upsertManyReportingAssignments } from '@/lib/reportingBackend';
 
 type TeamRow = {
   teamName: string;
@@ -130,6 +131,18 @@ export default function AdminReportingPage() {
 
       const map = readLocalJSON<Record<string, ReportingAssignment>>('reportingAssignments', {});
       setAssignments(map || {});
+
+      if (isSupabaseConfigured()) {
+        try {
+          const remoteAssignments = await listReportingAssignments();
+          if (remoteAssignments && Object.keys(remoteAssignments).length) {
+            setAssignments(remoteAssignments as Record<string, ReportingAssignment>);
+            localStorage.setItem('reportingAssignments', JSON.stringify(remoteAssignments));
+          }
+        } catch {
+          // Keep local fallback assignments.
+        }
+      }
 
       const nextDrafts: Record<string, ReportingAssignment> = {};
       (rows || []).forEach((t: any) => {
@@ -331,6 +344,9 @@ export default function AdminReportingPage() {
     try {
       localStorage.setItem('reportingAssignments', JSON.stringify(next));
       setAssignments(next);
+      if (isSupabaseConfigured()) {
+        void upsertManyReportingAssignments(next as any);
+      }
       // Keep drafts normalized to the saved/trimmed values.
       setDrafts((prev) => ({
         ...prev,
@@ -422,6 +438,9 @@ export default function AdminReportingPage() {
     try {
       localStorage.setItem('reportingAssignments', JSON.stringify(next));
       setAssignments(next);
+      if (isSupabaseConfigured()) {
+        void upsertManyReportingAssignments(next as any);
+      }
 
       // keep drafts in sync with saved values for selected teams
       setDrafts((prev) => {

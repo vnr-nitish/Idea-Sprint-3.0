@@ -6,6 +6,7 @@ import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, updateMember, updateTeam } from '@/lib/teamsBackend';
 import { deleteAllNocForTeam } from '@/lib/nocBackend';
 import { deleteAllPptForTeam } from '@/lib/pptBackend';
+import { listReportingAssignments, listReportingSpocs, upsertReportingAssignment } from '@/lib/reportingBackend';
 
 export default function TeamProfilesPage() {
   const router = useRouter();
@@ -144,6 +145,27 @@ export default function TeamProfilesPage() {
       setReportingSpocs(Array.isArray(spocs) ? spocs : []);
     } catch {
       setReportingSpocs([]);
+    }
+
+    if (isSupabaseConfigured()) {
+      void (async () => {
+        try {
+          const [remoteAssignments, remoteSpocs] = await Promise.all([
+            listReportingAssignments(),
+            listReportingSpocs(),
+          ]);
+          if (remoteAssignments && typeof remoteAssignments === 'object' && Object.keys(remoteAssignments).length) {
+            setReportingAssignmentsMap(remoteAssignments as Record<string, any>);
+            localStorage.setItem('reportingAssignments', JSON.stringify(remoteAssignments));
+          }
+          if (Array.isArray(remoteSpocs) && remoteSpocs.length) {
+            setReportingSpocs(remoteSpocs as any[]);
+            localStorage.setItem('reportingSpocs', JSON.stringify(remoteSpocs));
+          }
+        } catch {
+          // Keep local fallback.
+        }
+      })();
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -432,6 +454,16 @@ export default function TeamProfilesPage() {
     try {
       localStorage.setItem('reportingAssignments', JSON.stringify(current));
     } catch {}
+    if (isSupabaseConfigured()) {
+      void upsertReportingAssignment({
+        teamName: tn,
+        venue: next.venue,
+        date: next.date,
+        time: next.time,
+        spocId: String(next?.spoc?.id || ''),
+        spoc: next.spoc,
+      });
+    }
   };
 
   const getSpocForTeam = (teamName: string): string => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getReportingAssignmentForTeam } from '@/lib/reportingBackend';
 
 const formatDisplayDate = (value: string) => {
   const raw = String(value || '').trim();
@@ -36,7 +37,17 @@ export default function ReportingPage() {
   const [assignment, setAssignment] = useState<any>(null);
   const router = useRouter();
 
-  const loadAssignment = (teamName: string) => {
+  const loadAssignment = async (teamName: string) => {
+    try {
+      const remote = await getReportingAssignmentForTeam(teamName);
+      if (remote) {
+        setAssignment(remote);
+        return;
+      }
+    } catch {
+      // Fall back to local cache.
+    }
+
     try {
       const all = JSON.parse(localStorage.getItem('reportingAssignments') || 'null');
       if (all && all[teamName]) {
@@ -59,16 +70,18 @@ export default function ReportingPage() {
 
   useEffect(() => {
     if (!teamData) return;
-    loadAssignment(teamData.teamName);
+    void loadAssignment(teamData.teamName);
 
     const onStorage = (event: StorageEvent) => {
       if (!event.key || event.key === 'reportingAssignments') {
-        loadAssignment(teamData.teamName);
+        void loadAssignment(teamData.teamName);
       }
     };
 
     window.addEventListener('storage', onStorage);
-    const poll = setInterval(() => loadAssignment(teamData.teamName), 2500);
+    const poll = setInterval(() => {
+      void loadAssignment(teamData.teamName);
+    }, 2500);
     return () => {
       window.removeEventListener('storage', onStorage);
       clearInterval(poll);

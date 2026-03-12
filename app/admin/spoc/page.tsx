@@ -4,6 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
+import {
+  deleteReportingSpoc,
+  listReportingAssignments,
+  listReportingSpocs,
+  upsertManyReportingAssignments,
+  upsertReportingSpocs,
+} from '@/lib/reportingBackend';
 
 type Spoc = {
   id: string;
@@ -134,10 +141,32 @@ export default function AdminSpocPage() {
       return;
     }
 
-    setSpocs(readJson<Spoc[]>(SPOCS_KEY, []));
-    setAssignments(readJson<Record<string, ReportingAssignment>>(ASSIGNMENTS_KEY, {}));
-
     (async () => {
+      const localSpocs = readJson<Spoc[]>(SPOCS_KEY, []);
+      const localAssignments = readJson<Record<string, ReportingAssignment>>(ASSIGNMENTS_KEY, {});
+      setSpocs(localSpocs);
+      setAssignments(localAssignments);
+
+      if (isSupabaseConfigured()) {
+        try {
+          const [remoteSpocs, remoteAssignments] = await Promise.all([
+            listReportingSpocs(),
+            listReportingAssignments(),
+          ]);
+
+          if (Array.isArray(remoteSpocs) && remoteSpocs.length) {
+            setSpocs(remoteSpocs as Spoc[]);
+            writeJson(SPOCS_KEY, remoteSpocs);
+          }
+          if (remoteAssignments && Object.keys(remoteAssignments).length) {
+            setAssignments(remoteAssignments as Record<string, ReportingAssignment>);
+            writeJson(ASSIGNMENTS_KEY, remoteAssignments);
+          }
+        } catch {
+          // Keep local fallback.
+        }
+      }
+
       try {
         if (isSupabaseConfigured()) {
           const rows = await listTeamsWithMembers();
@@ -170,12 +199,7 @@ export default function AdminSpocPage() {
   }, [spocs]);
 
   const getZoneForTeam = (teamName: string) => {
-    try {
-      const map = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
-      return map[teamName]?.venue || '-';
-    } catch {
-      return '-';
-    }
+    return assignments?.[teamName]?.venue || '-';
   };
 
   const getTeamAttendance = (teamName: string): string => {
@@ -299,11 +323,17 @@ export default function AdminSpocPage() {
   const saveSpocs = (next: Spoc[]) => {
     setSpocs(next);
     writeJson(SPOCS_KEY, next);
+    if (isSupabaseConfigured()) {
+      void upsertReportingSpocs(next as any[]);
+    }
   };
 
   const saveAssignments = (next: Record<string, ReportingAssignment>) => {
     setAssignments(next);
     writeJson(ASSIGNMENTS_KEY, next);
+    if (isSupabaseConfigured()) {
+      void upsertManyReportingAssignments(next as any);
+    }
   };
 
   const openAdd = () => {
@@ -409,6 +439,9 @@ export default function AdminSpocPage() {
 
     const nextSpocs = spocs.filter((s) => s.id !== id);
     saveSpocs(nextSpocs);
+    if (isSupabaseConfigured()) {
+      void deleteReportingSpoc(id);
+    }
 
     const nextAssignments: Record<string, ReportingAssignment> = { ...(assignments || {}) };
     Object.keys(nextAssignments).forEach((teamName) => {
