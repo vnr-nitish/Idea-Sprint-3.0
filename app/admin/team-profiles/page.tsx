@@ -62,7 +62,7 @@ export default function TeamProfilesPage() {
     'School of Pharmacy',
     'Others',
   ];
-  const registrationProgramOptions = ['B.Tech', 'M.Tech', 'B.Sc', 'M.Sc', 'BBA', 'MBA', 'Others', 'Other'];
+  const registrationProgramOptions = ['B.Tech', 'M.Tech', 'B.Sc', 'M.Sc', 'BBA', 'MBA', 'Others'];
   const registrationYearOptions = ['1st Year', '2nd Year', '3rd Year', '4th Year', '5th Year'];
   const DOMAIN_OPTIONS = [
     'App Development',
@@ -1306,7 +1306,22 @@ export default function TeamProfilesPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-sm text-gitam-700">Name</label>
+                        <label className="text-sm text-gitam-700">Campus</label>
+                        <select
+                          value={teamDraft.members[selectedMemberIndex]?.campus || ''}
+                          onChange={(e)=>{
+                            const copy = { ...teamDraft, members: [...teamDraft.members] };
+                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], campus: e.target.value };
+                            setTeamDraft(copy);
+                          }}
+                          className="hh-input"
+                        >
+                          <option value="">Select Campus</option>
+                          {registrationCampusOptions.map((c)=> (<option key={c} value={c}>{c}</option>))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-sm text-gitam-700">Full Name</label>
                         <input
                           value={teamDraft.members[selectedMemberIndex]?.name || ''}
                           onChange={(e)=>{
@@ -1314,6 +1329,7 @@ export default function TeamProfilesPage() {
                             copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], name: e.target.value };
                             setTeamDraft(copy);
                           }}
+                          placeholder="Full name"
                           className="hh-input"
                         />
                       </div>
@@ -1326,30 +1342,37 @@ export default function TeamProfilesPage() {
                             copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], registrationNumber: e.target.value };
                             setTeamDraft(copy);
                           }}
+                          placeholder="Registration number"
                           className="hh-input"
                         />
                       </div>
                       <div>
-                        <label className="text-sm text-gitam-700">Email</label>
+                        <label className="text-sm text-gitam-700">GITAM Mail</label>
                         <input
+                          type="email"
                           value={teamDraft.members[selectedMemberIndex]?.email || ''}
                           onChange={(e)=>{
                             const copy = { ...teamDraft, members: [...teamDraft.members] };
                             copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], email: e.target.value };
                             setTeamDraft(copy);
                           }}
+                          placeholder="email@gitam.in"
                           className="hh-input"
                         />
                       </div>
                       <div>
                         <label className="text-sm text-gitam-700">Phone Number</label>
                         <input
+                          type="tel"
                           value={teamDraft.members[selectedMemberIndex]?.phoneNumber || ''}
                           onChange={(e)=>{
                             const copy = { ...teamDraft, members: [...teamDraft.members] };
                             copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], phoneNumber: e.target.value };
                             setTeamDraft(copy);
                           }}
+                          inputMode="numeric"
+                          maxLength={10}
+                          placeholder="10-digit phone number"
                           className="hh-input"
                         />
                       </div>
@@ -1364,7 +1387,7 @@ export default function TeamProfilesPage() {
                           }}
                           className="hh-input"
                         >
-                          <option value="">Select</option>
+                          <option value="">Select School</option>
                           {registrationSchoolOptions.map((s)=> (<option key={s} value={s}>{s}</option>))}
                         </select>
                       </div>
@@ -1379,22 +1402,25 @@ export default function TeamProfilesPage() {
                           }}
                           className="hh-input"
                         >
-                          <option value="">Select</option>
+                          <option value="">Select Program</option>
                           {registrationProgramOptions.map((p)=> (<option key={p} value={p}>{p}</option>))}
                         </select>
                       </div>
-                      <div>
-                        <label className="text-sm text-gitam-700">Program (Other)</label>
-                        <input
-                          value={teamDraft.members[selectedMemberIndex]?.programOther || ''}
-                          onChange={(e)=>{
-                            const copy = { ...teamDraft, members: [...teamDraft.members] };
-                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], programOther: e.target.value };
-                            setTeamDraft(copy);
-                          }}
-                          className="hh-input"
-                        />
-                      </div>
+                      {teamDraft.members[selectedMemberIndex]?.program === 'Others' && (
+                        <div>
+                          <label className="text-sm text-gitam-700">Specify Your Program</label>
+                          <input
+                            value={teamDraft.members[selectedMemberIndex]?.programOther || ''}
+                            onChange={(e)=>{
+                              const copy = { ...teamDraft, members: [...teamDraft.members] };
+                              copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], programOther: e.target.value };
+                              setTeamDraft(copy);
+                            }}
+                            placeholder="Enter your program"
+                            className="hh-input"
+                          />
+                        </div>
+                      )}
                       <div>
                         <label className="text-sm text-gitam-700">Branch</label>
                         <input
@@ -1404,23 +1430,9 @@ export default function TeamProfilesPage() {
                             copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], branch: e.target.value };
                             setTeamDraft(copy);
                           }}
+                          placeholder="Branch (e.g., CSE, ECE)"
                           className="hh-input"
                         />
-                      </div>
-                      <div>
-                        <label className="text-sm text-gitam-700">Campus</label>
-                        <select
-                          value={teamDraft.members[selectedMemberIndex]?.campus || ''}
-                          onChange={(e)=>{
-                            const copy = { ...teamDraft, members: [...teamDraft.members] };
-                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], campus: e.target.value };
-                            setTeamDraft(copy);
-                          }}
-                          className="hh-input"
-                        >
-                          <option value="">Select</option>
-                          {registrationCampusOptions.map((c)=> (<option key={c} value={c}>{c}</option>))}
-                        </select>
                       </div>
                       <div>
                         <label className="text-sm text-gitam-700">Year of Study</label>
@@ -1433,12 +1445,12 @@ export default function TeamProfilesPage() {
                           }}
                           className="hh-input"
                         >
-                          <option value="">Select</option>
+                          <option value="">Select Year</option>
                           {registrationYearOptions.map((y)=> (<option key={y} value={y}>{y}</option>))}
                         </select>
                       </div>
                       <div>
-                        <label className="text-sm text-gitam-700">Stay</label>
+                        <label className="text-sm text-gitam-700">Stay Type</label>
                         <select
                           value={teamDraft.members[selectedMemberIndex]?.stay || ''}
                           onChange={(e)=>{
@@ -1448,7 +1460,7 @@ export default function TeamProfilesPage() {
                           }}
                           className="hh-input"
                         >
-                          <option value="">Select</option>
+                          <option value="">Select Stay Type</option>
                           <option value="Hostel">Hostel</option>
                           <option value="Day Scholar">Day Scholar</option>
                         </select>

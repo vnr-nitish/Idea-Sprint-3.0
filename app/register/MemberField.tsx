@@ -91,6 +91,8 @@ const MemberField = ({ index, member, isTeamLead = false, onChange, errors }: Pr
             value={member.phoneNumber}
             onChange={(e) => onChange(index, "phoneNumber", e.target.value)}
             placeholder="10-digit phone number"
+            inputMode="numeric"
+            maxLength={10}
             className={inputClass("phoneNumber")}
           />
           {fieldError("phoneNumber") && <p className="text-gitam-700 text-xs mt-1">⚠️ {fieldError("phoneNumber")}</p>}
@@ -121,52 +123,47 @@ const MemberField = ({ index, member, isTeamLead = false, onChange, errors }: Pr
 
         <div>
           <label className="block text-sm font-semibold text-gitam-700 mb-1">Program <span className="text-gitam">*</span></label>
-          <input
-            list="programs"
+          <select
             value={member.program}
             onChange={(e) => onChange(index, "program", e.target.value)}
-            placeholder="Select Program"
             className={inputClass("program")}
-          />
-          <datalist id="programs">
-            <option value="B.Tech" />
-            <option value="M.Tech" />
-            <option value="B.Sc" />
-            <option value="M.Sc" />
-            <option value="BBA" />
-            <option value="MBA" />
-            <option value="Others" />
-            <option value="Other" />
-          </datalist>
+          >
+            <option value="" disabled hidden>Select Program</option>
+            <option value="B.Tech">B.Tech</option>
+            <option value="M.Tech">M.Tech</option>
+            <option value="B.Sc">B.Sc</option>
+            <option value="M.Sc">M.Sc</option>
+            <option value="BBA">BBA</option>
+            <option value="MBA">MBA</option>
+            <option value="Others">Others</option>
+          </select>
           {fieldError("program") && <p className="text-gitam-700 text-xs mt-1">⚠️ {fieldError("program")}</p>}
         </div>
 
+        {member.program === "Others" && (
+          <div>
+            <label className="block text-sm font-semibold text-gitam-700 mb-1">Specify Your Program <span className="text-gitam">*</span></label>
+            <input
+              type="text"
+              value={member.programOther}
+              onChange={(e) => onChange(index, "programOther", e.target.value)}
+              placeholder="Enter your program"
+              className={inputClass("programOther")}
+            />
+            {fieldError("programOther") && <p className="text-gitam-700 text-xs mt-1">⚠️ {fieldError("programOther")}</p>}
+          </div>
+        )}
+
         <div>
-          {member.program === "Other" ? (
-            <>
-              <label className="block text-sm font-semibold text-gitam-700 mb-1">Specify Your Program <span className="text-gitam">*</span></label>
-              <input
-                type="text"
-                value={member.programOther}
-                onChange={(e) => onChange(index, "programOther", e.target.value)}
-                placeholder="Enter your program"
-                className={inputClass("programOther")}
-              />
-              {fieldError("programOther") && <p className="text-gitam-700 text-xs mt-1">⚠️ {fieldError("programOther")}</p>}
-            </>
-          ) : (
-            <>
-              <label className="block text-sm font-semibold text-gitam-700 mb-1">Branch <span className="text-gitam">*</span></label>
-              <input
-                type="text"
-                value={member.branch}
-                onChange={(e) => onChange(index, "branch", e.target.value)}
-                placeholder="Branch (e.g., CSE, ECE)"
-                className={inputClass("branch")}
-              />
-              {fieldError("branch") && <p className="text-gitam-700 text-xs mt-1">⚠️ {fieldError("branch")}</p>}
-            </>
-          )}
+          <label className="block text-sm font-semibold text-gitam-700 mb-1">Branch <span className="text-gitam">*</span></label>
+          <input
+            type="text"
+            value={member.branch}
+            onChange={(e) => onChange(index, "branch", e.target.value)}
+            placeholder="Branch (e.g., CSE, ECE)"
+            className={inputClass("branch")}
+          />
+          {fieldError("branch") && <p className="text-gitam-700 text-xs mt-1">⚠️ {fieldError("branch")}</p>}
         </div>
 
         <div>
