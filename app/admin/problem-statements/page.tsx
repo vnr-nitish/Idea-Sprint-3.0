@@ -179,7 +179,7 @@ export default function AdminProblemStatementsPage() {
           }
         }
       })();
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(poll);
   }, [showModal, editingTeamKey, editingDeadlineKey]);

@@ -176,7 +176,7 @@ export default function TeamProfilesPage() {
       if (editingTeamIndex === null) {
         void reloadRegistered();
       }
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(poll);
   }, [editingTeamIndex]);

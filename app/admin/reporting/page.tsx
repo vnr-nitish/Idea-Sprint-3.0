@@ -213,7 +213,7 @@ export default function AdminReportingPage() {
         });
         setDrafts(nextDrafts);
       })();
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(poll);
   }, [ok, editing, selected]);

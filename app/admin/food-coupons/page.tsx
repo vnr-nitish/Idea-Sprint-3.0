@@ -78,7 +78,7 @@ export default function AdminFoodCouponsPage(){
           setAssignments({});
         }
       })();
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(poll);
   }, []);

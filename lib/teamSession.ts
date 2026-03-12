@@ -1,5 +1,6 @@
 import { isSupabaseConfigured } from './supabaseClient';
 import { getTeamByIdOrName, type TeamRecord } from './teamsBackend';
+import { getTeamProblemSelection } from './problemBackend';
 
 type CurrentTeamSession = {
   team: TeamRecord;
@@ -24,11 +25,21 @@ export const refreshCurrentTeamSession = async (): Promise<CurrentTeamSession | 
     const refreshedTeam = await getTeamByIdOrName(current.teamId || current.team?.teamId, current.team?.teamName);
     if (!refreshedTeam) return current;
 
+    // Fetch latest problem selection from backend
+    let selectedProblem = current.team?.selectedProblem;
+    try {
+      const remoteCode = await getTeamProblemSelection(String(refreshedTeam.teamName || ''));
+      if (remoteCode != null) selectedProblem = remoteCode;
+    } catch {
+      // keep local value
+    }
+
     const nextSession: CurrentTeamSession = {
       ...current,
       team: {
         ...refreshedTeam,
-        selectedProblem: current.team?.selectedProblem,
+        selectedProblem,
+        selectedProblemStatement: selectedProblem,
       },
       teamId: current.teamId || refreshedTeam.teamId,
     };

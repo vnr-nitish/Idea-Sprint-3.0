@@ -139,7 +139,7 @@ export default function AdminPPTPage() {
       } catch {
         setAssignments({});
       }
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps

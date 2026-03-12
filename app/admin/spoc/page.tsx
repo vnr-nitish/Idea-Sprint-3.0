@@ -212,7 +212,7 @@ export default function AdminSpocPage() {
         setSpocs(readJson<Spoc[]>(SPOCS_KEY, []));
         setAssignments(readJson<Record<string, ReportingAssignment>>(ASSIGNMENTS_KEY, {}));
       })();
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(poll);
   }, []);

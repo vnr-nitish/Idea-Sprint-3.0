@@ -95,7 +95,7 @@ export default function AdminNOCPage(){
       if (isSupabaseConfigured()) {
         void refreshBackendUploads();
       }
-    }, 3000);
+    }, 2000);
 
     return () => clearInterval(poll);
   }, [adminUploadingRows, registered]);

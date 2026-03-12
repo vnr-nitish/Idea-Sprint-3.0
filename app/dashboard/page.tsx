@@ -60,7 +60,7 @@ export default function DashboardPage() {
     window.addEventListener('storage', onStorage);
     const poll = setInterval(() => {
       void load();
-    }, 3000);
+    }, 2000);
 
     return () => {
       window.removeEventListener('storage', onStorage);

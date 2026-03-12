@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getTeamProblemSelection, listProblemStatements } from '@/lib/problemBackend';
+import { getTeamProblemSelection, listProblemStatements, upsertTeamProblemSelection } from '@/lib/problemBackend';
 
 interface ProblemStatement {
   id: string;
@@ -18,8 +18,12 @@ export default function DashboardProblemPage() {
   const router = useRouter();
   const [tab, setTab] = useState<'view' | 'select'>('view');
   const [team, setTeam] = useState<any>(null);
+  const [isLead, setIsLead] = useState(false);
   const [problems, setProblems] = useState<ProblemStatement[]>([]);
   const [selectedCode, setSelectedCode] = useState<string>('');
+  const [pendingCode, setPendingCode] = useState<string>('');
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string>('');
   const [loading, setLoading] = useState(true);
 
   const normalizeDomain = (value: unknown) => {
@@ -30,6 +34,32 @@ export default function DashboardProblemPage() {
     if (raw === 'artificial intelligence' || raw === 'ai') return 'AI';
     if (raw === 'machine learning and data science' || raw === 'ml & data science' || raw === 'ml & ds') return 'ML & DS';
     return String(value || '').trim();
+  };
+
+  const saveProblemSelection = async () => {
+    if (!team || !pendingCode) return;
+    setSaving(true);
+    setSaveMsg('');
+    try {
+      const ok = await upsertTeamProblemSelection(String(team.teamName || ''), pendingCode);
+      if (ok) {
+        setSelectedCode(pendingCode);
+        // update localStorage session
+        try {
+          const current = JSON.parse(localStorage.getItem('currentTeam') || 'null');
+          if (current?.team) {
+            const updated = { ...current, team: { ...current.team, selectedProblem: pendingCode, selectedProblemStatement: pendingCode } };
+            localStorage.setItem('currentTeam', JSON.stringify(updated));
+          }
+        } catch { /* ignore */ }
+        setSaveMsg('Saved successfully!');
+      } else {
+        setSaveMsg('Save failed. Please try again.');
+      }
+    } catch {
+      setSaveMsg('Save failed. Please try again.');
+    }
+    setSaving(false);
   };
 
   useEffect(() => {
@@ -48,6 +78,18 @@ export default function DashboardProblemPage() {
         if (current) {
           const teamData = current.team;
           setTeam(teamData);
+
+          // Detect if current user is the team lead using same token matching as profile page
+          const normalizeId = (v: unknown) => String(v || '').toLowerCase().replace(/[^a-z0-9@_.]/g, '').trim();
+          const currentIdentifier = normalizeId(current.identifier || current.identifierNormalized || '');
+          const members: any[] = Array.isArray(teamData.members) ? teamData.members : [];
+          const leadMember = members.find((m: any) => {
+            const n = String(m?.name || '').toLowerCase();
+            const e = String(m?.email || '').toLowerCase();
+            return n.includes('lead') || e.includes('.lead@');
+          }) || members[0];
+          const leadTokens = [leadMember?.email, leadMember?.phoneNumber, leadMember?.registrationNumber].map((v: any) => normalizeId(v));
+          setIsLead(!!(currentIdentifier && leadTokens.includes(currentIdentifier)));
 
           try {
             const remotePs = await listProblemStatements();
@@ -70,6 +112,7 @@ export default function DashboardProblemPage() {
             // keep local fallback
           }
           setSelectedCode(currentCode);
+          setPendingCode(currentCode);
         }
         setLoading(false);
       } catch (error) {
@@ -223,24 +266,61 @@ export default function DashboardProblemPage() {
           </div>
         ) : (
           <div className="hh-card p-6 border-2 border-gitam-200 mb-6">
-            <h2 className="text-xl font-semibold text-gitam-700 mb-4">Selected Problem Statement</h2>
-            <div className="space-y-4">
-              <div className="border-2 border-gitam-200 rounded-lg p-4 bg-antique/60">
-                <h3 className="text-lg font-semibold text-gitam-700 mb-3">Selected Problem Statement</h3>
-                {selectedProblem ? (
-                  <div className="rounded-xl border-2 border-gitam-200 bg-antique p-4">
-                    <ul className="list-disc pl-5 space-y-2 text-gitam-700">
-                      <li><span className="font-semibold">PS Code:</span> {selectedProblem.code || '-'}</li>
-                      <li><span className="font-semibold">Title:</span> {selectedProblem.title || selectedProblem.code || '-'}</li>
-                      <li><span className="font-semibold">Description:</span> {selectedProblem.description || '-'}</li>
-                      <li><span className="font-semibold">Outcome:</span> {selectedProblem.outcome || '-'}</li>
-                    </ul>
-                  </div>
+            <h2 className="text-xl font-semibold text-gitam-700 mb-4">Select Problem Statement</h2>
+            {!isLead ? (
+              <div className="bg-antique/60 border-2 border-gitam-200 rounded-xl p-5 text-gitam-700/75">
+                Only the team lead can select a problem statement. Your current selection is shown below.
+                {selectedCode ? (
+                  <div className="mt-3 font-semibold text-gitam-700">Selected: {selectedCode}</div>
                 ) : (
-                  <p className="text-gitam-700/75">Not yet selected.</p>
+                  <div className="mt-3 text-gitam-700/60">No problem statement selected yet.</div>
                 )}
               </div>
-            </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-semibold text-gitam-700">Domain</label>
+                  <input
+                    type="text"
+                    readOnly
+                    value={normalizeDomain(team?.domain) || '-'}
+                    className="border-2 border-gitam-200 rounded-xl px-4 py-2 bg-gitam-50/60 text-gitam-700 font-medium cursor-not-allowed w-full max-w-sm"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-semibold text-gitam-700">Problem Statement Code</label>
+                  {domainProblems.length === 0 ? (
+                    <p className="text-gitam-700/60 text-sm">No problem statements available for your domain yet.</p>
+                  ) : (
+                    <select
+                      value={pendingCode}
+                      onChange={(e) => { setPendingCode(e.target.value); setSaveMsg(''); }}
+                      className="border-2 border-gitam-200 rounded-xl px-4 py-2 bg-antique text-gitam-700 font-medium w-full max-w-sm focus:outline-none focus:border-gitam-700"
+                    >
+                      <option value="">-- Select a problem code --</option>
+                      {domainProblems.map((ps) => (
+                        <option key={ps.id} value={ps.code}>{ps.code}{ps.title ? ` — ${ps.title}` : ''}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                {selectedCode && (
+                  <div className="text-sm text-gitam-700/75">
+                    Currently saved: <span className="font-semibold text-gitam-700">{selectedCode}</span>
+                  </div>
+                )}
+                <button
+                  onClick={() => void saveProblemSelection()}
+                  disabled={saving || !pendingCode || pendingCode === selectedCode}
+                  className="hh-btn px-6 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {saving ? 'Saving…' : 'Save'}
+                </button>
+                {saveMsg && (
+                  <p className={`text-sm font-medium ${saveMsg.startsWith('Saved') ? 'text-green-700' : 'text-red-600'}`}>{saveMsg}</p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
