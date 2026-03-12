@@ -68,16 +68,6 @@ export default function DashboardPage() {
     };
   }, []);
 
-  useEffect(() => {
-    // If no team session, redirect to login after a short delay
-    if (!teamData) {
-      const id = setTimeout(() => {
-        try { router.push('/login'); } catch (e) { /* ignore */ }
-      }, 700);
-      return () => clearTimeout(id);
-    }
-  }, [teamData, router]);
-
   if (!teamData) {
     return (
       <main className="hh-page pt-20 flex items-center justify-center">

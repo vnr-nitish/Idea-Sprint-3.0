@@ -39,6 +39,7 @@ export const refreshCurrentTeamSession = async (): Promise<CurrentTeamSession | 
       team: {
         ...refreshedTeam,
         selectedProblem,
+        selectedProblemStatement: selectedProblem,
       },
       teamId: current.teamId || refreshedTeam.teamId,
     };

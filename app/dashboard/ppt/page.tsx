@@ -254,21 +254,7 @@ export default function PPTPage() {
   const canUpload = isLeader && now() < PPT_DEADLINE && !isFrozen;
   const removable = Boolean(file) && canUpload;
 
-  useEffect(() => {
-    try {
-      if (!teamData) return;
-      const teamName = teamData.teamName || 'team';
-      const campus = getCampus(teamData) || 'campus';
-      const keyShown = `ppt_deadline_shown_${encodeURIComponent(teamName)}_${encodeURIComponent(campus)}`;
-      const raw = sessionStorage.getItem(keyShown);
-      if (!raw && !file && now() < PPT_DEADLINE && !isFrozen) {
-        alert(`Reminder: Please upload your PPT (PDF) before ${formatFriendly(PPT_DEADLINE)}`);
-        sessionStorage.setItem(keyShown, '1');
-      }
-    } catch {
-      // ignore
-    }
-  }, [teamData, file, isFrozen, PPT_DEADLINE]);
+
 
   useEffect(() => {
     try {
@@ -306,7 +292,9 @@ export default function PPTPage() {
     if (isSupabaseConfigured() && tid) {
       try {
         await deletePpt(String(tid), campus);
-        await refreshFromBackend();
+        setFile(null);
+        setUploadedAt(null);
+        setPendingFile(null);
         setDeleting(false);
         return;
       } catch (e: any) {

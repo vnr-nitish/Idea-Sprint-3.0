@@ -295,7 +295,28 @@ export default function TeamProfilesPage() {
     if (editingTeamIndex === null || !teamDraft) return;
     if (isSupabaseConfigured() && teamDraft.teamId) {
       try {
+        const oldTeamName = String(registered[editingTeamIndex]?.teamName || '').trim();
+        const newTeamName = String(teamDraft.teamName || '').trim();
         await updateTeam(String(teamDraft.teamId), { domain: teamDraft.domain, teamName: teamDraft.teamName });
+        // Migrate reporting assignment if team name changed
+        if (oldTeamName && newTeamName && oldTeamName !== newTeamName) {
+          try {
+            const assignments = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
+            if (assignments[oldTeamName]) {
+              assignments[newTeamName] = assignments[oldTeamName];
+              delete assignments[oldTeamName];
+              localStorage.setItem('reportingAssignments', JSON.stringify(assignments));
+              setReportingAssignmentsMap((prev: any) => {
+                const next = { ...prev };
+                if (next[oldTeamName]) {
+                  next[newTeamName] = next[oldTeamName];
+                  delete next[oldTeamName];
+                }
+                return next;
+              });
+            }
+          } catch {}
+        }
         const members = Array.isArray(teamDraft.members) ? teamDraft.members : [];
         await Promise.all(
           members
@@ -463,6 +484,7 @@ export default function TeamProfilesPage() {
     setReportingAssignmentsMap(current);
     try {
       localStorage.setItem('reportingAssignments', JSON.stringify(current));
+      try { window.dispatchEvent(new StorageEvent('storage', { key: 'reportingAssignments', newValue: JSON.stringify(current) })); } catch {}
     } catch {}
     if (isSupabaseConfigured()) {
       void upsertReportingAssignment({

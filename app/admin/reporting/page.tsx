@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
@@ -72,6 +72,10 @@ export default function AdminReportingPage() {
   const [drafts, setDrafts] = useState<Record<string, ReportingAssignment>>({});
   const [editing, setEditing] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
 
   const [campusFilter, setCampusFilter] = useState<string>('All');
   const [domainFilter, setDomainFilter] = useState<string>('All');
@@ -167,8 +171,8 @@ export default function AdminReportingPage() {
     if (!ok) return;
 
     const poll = setInterval(() => {
-      const hasEditing = Object.values(editing).some(Boolean);
-      const hasSelection = Object.values(selected).some(Boolean);
+      const hasEditing = Object.values(editingRef.current).some(Boolean);
+      const hasSelection = Object.values(selectedRef.current).some(Boolean);
       if (hasEditing || hasSelection) return;
 
       void (async () => {
@@ -216,7 +220,7 @@ export default function AdminReportingPage() {
     }, 2000);
 
     return () => clearInterval(poll);
-  }, [ok, editing, selected]);
+  }, [ok]);
 
   const normalizedTeams: TeamRow[] = useMemo(() => {
     return (teams || [])

@@ -795,10 +795,12 @@ export default function AdminNOCPage(){
                                     (async () => {
                                       try{
                                         if (isSupabaseConfigured()) {
-                                          await deleteNocBackend(team.teamName, String(id));
+                                          const resolvedMeta = resolveBackendUploadForMember(team.teamName, m);
+                                          const deleteId = resolvedMeta?.memberId || String(id);
+                                          await deleteNocBackend(team.teamName, deleteId);
                                           setBackendUploads((prev) => {
                                             const next = { ...prev };
-                                            delete next[memberKey(team.teamName, String(id))];
+                                            delete next[memberKey(team.teamName, deleteId)];
                                             return next;
                                           });
                                           setBackendCounts((prev) => ({
@@ -947,10 +949,12 @@ export default function AdminNOCPage(){
                                     (async () => {
                                       try{
                                         if (isSupabaseConfigured()) {
-                                          await deleteNocBackend(team.teamName, String(id));
+                                          const resolvedMeta = resolveBackendUploadForMember(team.teamName, individualView.member);
+                                          const deleteId = resolvedMeta?.memberId || String(id);
+                                          await deleteNocBackend(team.teamName, deleteId);
                                           setBackendUploads((prev) => {
                                             const next = { ...prev };
-                                            delete next[memberKey(team.teamName, String(id))];
+                                            delete next[memberKey(team.teamName, deleteId)];
                                             return next;
                                           });
                                           setBackendCounts((prev) => ({
@@ -1281,10 +1285,11 @@ export default function AdminNOCPage(){
                             (async () => {
                               try{
                                 if (isSupabaseConfigured()) {
-                                  await deleteNocBackend(m.teamName, memberId);
+                                  const deleteId = backendMeta?.memberId ? String(backendMeta.memberId) : memberId;
+                                  await deleteNocBackend(m.teamName, deleteId);
                                   setBackendUploads((prev) => {
                                     const next = { ...prev };
-                                    delete next[memberKey(m.teamName, memberId)];
+                                    delete next[memberKey(m.teamName, deleteId)];
                                     return next;
                                   });
                                   setBackendCounts((prev) => ({
