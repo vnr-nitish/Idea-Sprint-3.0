@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { updateMember } from '@/lib/teamsBackend';
+import { refreshCurrentTeamSession } from '@/lib/teamSession';
 
 export default function ProfilePage() {
   const [teamData, setTeamData] = useState<any>(null);
@@ -21,16 +22,36 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
-    try {
-      const current = JSON.parse(localStorage.getItem("currentTeam") || "null");
-      if (current) {
-        setTeamData(current.team);
-        setTeamDraft(JSON.parse(JSON.stringify(current.team)));
-        setIdentifier(current.identifier || "");
+    const load = async () => {
+      try {
+        const current = await refreshCurrentTeamSession();
+        if (current) {
+          setTeamData(current.team);
+          setTeamDraft(JSON.parse(JSON.stringify(current.team)));
+          setIdentifier(current.identifier || current.identifierNormalized || "");
+        }
+      } catch (e) {
+        console.warn(e);
       }
-    } catch (e) {
-      console.warn(e);
-    }
+    };
+
+    void load();
+
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === 'currentTeam') {
+        void load();
+      }
+    };
+
+    window.addEventListener('storage', onStorage);
+    const poll = setInterval(() => {
+      void load();
+    }, 3000);
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      clearInterval(poll);
+    };
   }, []);
 
   const getLeadIndex = (): number => {

@@ -171,6 +171,16 @@ export default function TeamProfilesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const poll = setInterval(() => {
+      if (editingTeamIndex === null) {
+        void reloadRegistered();
+      }
+    }, 3000);
+
+    return () => clearInterval(poll);
+  }, [editingTeamIndex]);
+
   const getMemberIdentity = (member: any, fallbackIndex: number): string => {
     return String(
       member?.email ||

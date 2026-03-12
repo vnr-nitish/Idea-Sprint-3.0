@@ -40,6 +40,28 @@ const normalizePhone = (phone: string) => {
   return digitsOnly;
 };
 
+const mapTeamRecord = (team: any, members: any[]): TeamRecord => ({
+  teamId: team.id,
+  teamName: team.team_name,
+  domain: team.domain || '',
+  teamPassword: '',
+  createdAt: team.created_at,
+  members: members.map((m: any) => ({
+    id: m.id,
+    name: m.name || '',
+    registrationNumber: m.registration_number || '',
+    email: m.email || '',
+    phoneNumber: m.phone_number || '',
+    school: m.school || '',
+    program: m.program || '',
+    programOther: m.program_other || '',
+    branch: m.branch || '',
+    campus: m.campus || '',
+    stay: m.stay || '',
+    yearOfStudy: m.year_of_study || '',
+  })),
+});
+
 export const listTeamsWithMembers = async (): Promise<TeamRecord[] | null> => {
   if (!isSupabaseConfigured()) return null;
   const supabase = getSupabaseClient();
@@ -70,30 +92,34 @@ export const listTeamsWithMembers = async (): Promise<TeamRecord[] | null> => {
     }
   }
 
-  return teams.map((t: any) => {
-    const ms = membersByTeam.get(t.id) || [];
-    return {
-      teamId: t.id,
-      teamName: t.team_name,
-      domain: t.domain || '',
-      teamPassword: '',
-      createdAt: t.created_at,
-      members: ms.map((m: any) => ({
-        id: m.id,
-        name: m.name || '',
-        registrationNumber: m.registration_number || '',
-        email: m.email || '',
-        phoneNumber: m.phone_number || '',
-        school: m.school || '',
-        program: m.program || '',
-        programOther: m.program_other || '',
-        branch: m.branch || '',
-        campus: m.campus || '',
-        stay: m.stay || '',
-        yearOfStudy: m.year_of_study || '',
-      })),
-    } satisfies TeamRecord;
-  });
+  return teams.map((t: any) => mapTeamRecord(t, membersByTeam.get(t.id) || []));
+};
+
+export const getTeamByIdOrName = async (teamId?: string | null, teamName?: string | null): Promise<TeamRecord | null> => {
+  if (!isSupabaseConfigured()) return null;
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  let teamQuery = supabase.from('teams').select('id, team_name, domain, created_at');
+  if (teamId) {
+    teamQuery = teamQuery.eq('id', teamId);
+  } else if (teamName) {
+    teamQuery = teamQuery.eq('team_name', teamName);
+  } else {
+    return null;
+  }
+
+  const { data: teamRow, error: teamError } = await teamQuery.maybeSingle();
+  if (teamError || !teamRow?.id) return null;
+
+  const { data: members, error: membersError } = await supabase
+    .from('members')
+    .select('id, team_id, member_index, name, registration_number, email, phone_number, school, program, program_other, branch, campus, stay, year_of_study')
+    .eq('team_id', teamRow.id)
+    .order('member_index', { ascending: true });
+
+  if (membersError) return null;
+  return mapTeamRecord(teamRow, Array.isArray(members) ? members : []);
 };
 
 export const registerTeamWithMembers = async (team: { teamName: string; domain: string }, members: TeamMemberRecord[]): Promise<{ teamId: string; members: { id: string; email: string }[] } | null> => {
