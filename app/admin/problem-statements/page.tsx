@@ -4,6 +4,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
+import {
+  deleteProblemStatementById,
+  listProblemStatements,
+  listTeamProblemSelections,
+  upsertProblemStatements,
+  upsertTeamProblemSelection,
+} from '@/lib/problemBackend';
 
 interface ProblemStatement {
   id: string;
@@ -20,6 +27,7 @@ export default function AdminProblemStatementsPage() {
   const [registered, setRegistered] = useState<any[]>([]);
   const [problems, setProblems] = useState<ProblemStatement[]>([]);
   const [assignments, setAssignments] = useState<Record<string, any>>({});
+  const [teamSelections, setTeamSelections] = useState<Record<string, string>>({});
 
   // Problem Statement form state
   const [domain, setDomain] = useState('');
@@ -78,9 +86,12 @@ export default function AdminProblemStatementsPage() {
   };
 
   const getTeamSelectedCode = useCallback((team: any) => {
+    const teamName = String(team?.teamName || '').trim();
+    const fromMap = String(teamSelections?.[teamName] || '').trim();
+    if (fromMap) return fromMap;
     const raw = String(team?.selectedProblemStatement || team?.selectedProblem || '').trim();
     return raw;
-  }, []);
+  }, [teamSelections]);
 
   const formatDate = (iso?: string) => {
     if (!iso) return '-';
@@ -154,6 +165,26 @@ export default function AdminProblemStatementsPage() {
       setProblems([]);
     }
 
+    if (isSupabaseConfigured()) {
+      void (async () => {
+        try {
+          const [remoteProblems, remoteSelections] = await Promise.all([
+            listProblemStatements(),
+            listTeamProblemSelections(),
+          ]);
+          if (Array.isArray(remoteProblems)) {
+            setProblems(remoteProblems as ProblemStatement[]);
+            localStorage.setItem('problemStatements', JSON.stringify(remoteProblems));
+          }
+          if (remoteSelections && typeof remoteSelections === 'object') {
+            setTeamSelections(remoteSelections);
+          }
+        } catch {
+          // keep local fallback
+        }
+      })();
+    }
+
     try {
       const existing = localStorage.getItem('problem_general_deadline');
       if (existing) {
@@ -201,6 +232,9 @@ export default function AdminProblemStatementsPage() {
       localStorage.setItem('problemStatements', JSON.stringify(next));
     } catch (e) {
       console.warn(e);
+    }
+    if (isSupabaseConfigured()) {
+      void upsertProblemStatements(next as any);
     }
   };
 
@@ -260,6 +294,9 @@ export default function AdminProblemStatementsPage() {
   const deleteProblem = (id: string) => {
     if (confirm('Delete this problem statement?')) {
       saveProblems(problems.filter((p) => p.id !== id));
+      if (isSupabaseConfigured()) {
+        void deleteProblemStatementById(id);
+      }
     }
   };
 
@@ -480,6 +517,10 @@ export default function AdminProblemStatementsPage() {
       setEditingTeamKey(null);
       setEditingTeamPsCode('');
       setEditingTeam(null);
+      setTeamSelections((prev) => ({ ...prev, [teamName]: normalizedCode || '' }));
+      if (isSupabaseConfigured()) {
+        void upsertTeamProblemSelection(teamName, normalizedCode || '');
+      }
       alert('Team problem statement updated.');
     } catch {
       alert('Failed to update team problem statement.');

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { listFoodCouponsForTeam } from '@/lib/foodBackend';
 
 export default function FoodPage() {
   const [teamData, setTeamData] = useState<any>(null);
@@ -18,16 +19,28 @@ export default function FoodPage() {
   useEffect(() => {
     if (!teamData) return;
     const key = `foodCoupons_${encodeURIComponent(teamData.teamName)}`;
-    const load = () => {
+    const load = async () => {
+      try {
+        const remote = await listFoodCouponsForTeam(String(teamData.teamName || ''));
+        if (Array.isArray(remote)) {
+          setCoupons(remote as any[]);
+          return;
+        }
+      } catch {
+        // Fallback to local cache.
+      }
+
       try {
         const raw = localStorage.getItem(key);
         if (raw) setCoupons(JSON.parse(raw));
       } catch (e) { console.warn(e); }
     };
-    load();
-    const onStorage = (e: StorageEvent) => { if (e.key === key) load(); };
+    void load();
+    const onStorage = (e: StorageEvent) => { if (e.key === key) void load(); };
     window.addEventListener('storage', onStorage);
-    const poll = setInterval(load, 2500);
+    const poll = setInterval(() => {
+      void load();
+    }, 2500);
     return () => { window.removeEventListener('storage', onStorage); clearInterval(poll); };
   }, [teamData]);
 

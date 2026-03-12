@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
+import { replaceFoodCouponsForTeam } from '@/lib/foodBackend';
 
 export default function AdminFoodCouponsPage(){
   const router = useRouter();
@@ -152,6 +153,12 @@ export default function AdminFoodCouponsPage(){
 
   const makeKey = (teamName:string) => `foodCoupons_${encodeURIComponent(teamName)}`;
 
+  const syncCouponsBackend = (teamName: string, coupons: any[]) => {
+    if (isSupabaseConfigured()) {
+      void replaceFoodCouponsForTeam(teamName, coupons || []);
+    }
+  };
+
   const ensureCouponsForTeam = (team:any) => {
     const keyEnc = makeKey(team.teamName);
     const keyPlain = `foodCoupons_${team.teamName}`;
@@ -241,6 +248,7 @@ export default function AdminFoodCouponsPage(){
     try{
       localStorage.setItem(key, JSON.stringify(teamCoupons));
       localStorage.setItem(`foodCoupons_${selectedTeam.teamName}`, JSON.stringify(teamCoupons));
+      syncCouponsBackend(String(selectedTeam.teamName || ''), teamCoupons);
       // persist then close modal
       setSelectedTeam(null);
       setTeamCoupons(null);
@@ -268,6 +276,7 @@ export default function AdminFoodCouponsPage(){
       const key = makeKey(selectedTeam.teamName);
       localStorage.setItem(key, JSON.stringify(updated));
       localStorage.setItem(`foodCoupons_${selectedTeam.teamName}`, JSON.stringify(updated));
+      syncCouponsBackend(String(selectedTeam.teamName || ''), updated);
       setTeamCoupons(updated);
       alert('Saved');
     }catch(e){ alert('Save failed'); }
@@ -289,6 +298,7 @@ export default function AdminFoodCouponsPage(){
       const key = makeKey(teamName);
       localStorage.setItem(key, JSON.stringify(updated));
       localStorage.setItem(`foodCoupons_${teamName}`, JSON.stringify(updated));
+      syncCouponsBackend(String(teamName || ''), updated);
       setTeamCoupons(updated);
       alert('Saved');
     }catch(e){ alert('Save failed'); }
@@ -368,6 +378,7 @@ export default function AdminFoodCouponsPage(){
       const key = makeKey(teamName);
       localStorage.setItem(key, JSON.stringify(individualModalAllCoupons));
       localStorage.setItem(`foodCoupons_${teamName}`, JSON.stringify(individualModalAllCoupons));
+      syncCouponsBackend(String(teamName || ''), individualModalAllCoupons);
       alert('Saved');
     }catch(e){
       alert('Save failed');
@@ -384,7 +395,7 @@ export default function AdminFoodCouponsPage(){
       }
       return c;
     });
-    try{ const key = makeKey(selectedTeam.teamName); localStorage.setItem(key, JSON.stringify(updated)); localStorage.setItem(`foodCoupons_${selectedTeam.teamName}`, JSON.stringify(updated)); setTeamCoupons(updated); alert('Saved'); setIndividualEditor(null); }catch(e){ alert('Save failed'); }
+    try{ const key = makeKey(selectedTeam.teamName); localStorage.setItem(key, JSON.stringify(updated)); localStorage.setItem(`foodCoupons_${selectedTeam.teamName}`, JSON.stringify(updated)); syncCouponsBackend(String(selectedTeam.teamName || ''), updated); setTeamCoupons(updated); alert('Saved'); setIndividualEditor(null); }catch(e){ alert('Save failed'); }
   };
 
   // Individuals list flattened

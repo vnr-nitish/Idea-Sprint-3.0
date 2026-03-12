@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { getTeamProblemSelection, listProblemStatements } from '@/lib/problemBackend';
 
 interface ProblemStatement {
   id: string;
@@ -41,36 +42,58 @@ export default function DashboardProblemPage() {
   }, []);
 
   useEffect(() => {
-    try {
-      const current = JSON.parse(localStorage.getItem('currentTeam') || 'null');
-      if (current) {
-        const teamData = current.team;
-        setTeam(teamData);
+    const load = async () => {
+      try {
+        const current = JSON.parse(localStorage.getItem('currentTeam') || 'null');
+        if (current) {
+          const teamData = current.team;
+          setTeam(teamData);
 
-        try {
-          const ps = JSON.parse(localStorage.getItem('problemStatements') || '[]');
-          setProblems(Array.isArray(ps) ? ps : []);
-        } catch {
-          setProblems([]);
+          try {
+            const remotePs = await listProblemStatements();
+            if (Array.isArray(remotePs)) {
+              setProblems(remotePs as any[]);
+            } else {
+              const ps = JSON.parse(localStorage.getItem('problemStatements') || '[]');
+              setProblems(Array.isArray(ps) ? ps : []);
+            }
+          } catch {
+            const ps = JSON.parse(localStorage.getItem('problemStatements') || '[]');
+            setProblems(Array.isArray(ps) ? ps : []);
+          }
+
+          let currentCode = String(teamData.selectedProblemStatement || teamData.selectedProblem || '').trim();
+          try {
+            const remoteCode = await getTeamProblemSelection(String(teamData.teamName || ''));
+            if (remoteCode) currentCode = String(remoteCode).trim();
+          } catch {
+            // keep local fallback
+          }
+          setSelectedCode(currentCode);
         }
-
-        const currentCode = String(teamData.selectedProblemStatement || teamData.selectedProblem || '').trim();
-        setSelectedCode(currentCode);
+        setLoading(false);
+      } catch (error) {
+        console.error(error);
+        setLoading(false);
       }
-      setLoading(false);
-    } catch (error) {
-      console.error(error);
-      setLoading(false);
-    }
+    };
+
+    void load();
   }, []);
 
   useEffect(() => {
-    const reload = () => {
+    const reload = async () => {
       try {
         const current = JSON.parse(localStorage.getItem('currentTeam') || 'null');
         if (current?.team) {
           setTeam(current.team);
-          const currentCode = String(current.team.selectedProblemStatement || current.team.selectedProblem || '').trim();
+          let currentCode = String(current.team.selectedProblemStatement || current.team.selectedProblem || '').trim();
+          try {
+            const remoteCode = await getTeamProblemSelection(String(current.team.teamName || ''));
+            if (remoteCode) currentCode = String(remoteCode).trim();
+          } catch {
+            // keep local fallback
+          }
           setSelectedCode(currentCode);
         }
       } catch {
@@ -78,21 +101,33 @@ export default function DashboardProblemPage() {
       }
 
       try {
-        const ps = JSON.parse(localStorage.getItem('problemStatements') || '[]');
-        setProblems(Array.isArray(ps) ? ps : []);
+        const remotePs = await listProblemStatements();
+        if (Array.isArray(remotePs)) {
+          setProblems(remotePs as any[]);
+        } else {
+          const ps = JSON.parse(localStorage.getItem('problemStatements') || '[]');
+          setProblems(Array.isArray(ps) ? ps : []);
+        }
       } catch {
-        setProblems([]);
+        try {
+          const ps = JSON.parse(localStorage.getItem('problemStatements') || '[]');
+          setProblems(Array.isArray(ps) ? ps : []);
+        } catch {
+          setProblems([]);
+        }
       }
     };
 
     const onStorage = (e: StorageEvent) => {
       if (!e.key || e.key.startsWith('problem_') || e.key === 'currentTeam' || e.key === 'registeredTeams' || e.key === 'problemStatements') {
-        reload();
+        void reload();
       }
     };
 
     window.addEventListener('storage', onStorage);
-    const poll = setInterval(reload, 2500);
+    const poll = setInterval(() => {
+      void reload();
+    }, 2500);
     return () => {
       window.removeEventListener('storage', onStorage);
       clearInterval(poll);
