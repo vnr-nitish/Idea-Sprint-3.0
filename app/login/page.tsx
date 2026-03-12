@@ -245,7 +245,7 @@ export default function LoginPage() {
           {/* Hero banner */}
           <div className="bg-gitam p-8 text-antique">
             <h1 className="text-3xl md:text-4xl font-bold">Idea Sprint 3.0</h1>
-            <p className="mt-2 md:mt-1">organized by Director of Training in Competency Development</p>
+            <p className="mt-2 md:mt-1">organized by Directorate of Training, Mentoring &amp; Career Guidance</p>
           </div>
 
           <div className="p-6 md:p-10 flex justify-center">

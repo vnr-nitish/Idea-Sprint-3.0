@@ -57,6 +57,7 @@ export default function RegisterPage() {
   const [globalError, setGlobalError] = useState('');
   const [successData, setSuccessData] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCheckingMember, setIsCheckingMember] = useState(false);
 
   useEffect(() => {
     if (step !== 'memberDetails' && step !== 'success') return;
@@ -89,14 +90,8 @@ export default function RegisterPage() {
 
       if (parsed?.teamData) setTeamData(parsed.teamData);
       if (Array.isArray(parsed?.members) && parsed.members.length) setMembers(parsed.members);
-      if (typeof parsed?.instructionsAccepted === 'boolean') setInstructionsAccepted(parsed.instructionsAccepted);
-      if (typeof parsed?.declarationAccepted === 'boolean') setDeclarationAccepted(parsed.declarationAccepted);
       if (typeof parsed?.currentMemberIndex === 'number') setCurrentMemberIndex(parsed.currentMemberIndex);
-
-      const draftStep = parsed?.step as RegistrationStep | undefined;
-      if (draftStep && draftStep !== 'success') {
-        setStep(draftStep);
-      }
+      // Step and checkboxes are intentionally NOT restored — a page refresh always starts at instructions.
     } catch {
       localStorage.removeItem(REGISTRATION_DRAFT_KEY);
     } finally {
@@ -132,6 +127,34 @@ export default function RegisterPage() {
       // Ignore storage cleanup failures.
     }
   };
+
+  // Reset to instructions after 30 minutes of inactivity (detected when the tab regains focus)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') return;
+      try {
+        const rawDraft = localStorage.getItem(REGISTRATION_DRAFT_KEY);
+        if (!rawDraft) return;
+        const parsed = JSON.parse(rawDraft);
+        const updatedAt = Number(parsed?.updatedAt || 0);
+        if (updatedAt > 0 && Date.now() - updatedAt > REGISTRATION_DRAFT_MAX_AGE_MS) {
+          localStorage.removeItem(REGISTRATION_DRAFT_KEY);
+          setStep('instructions');
+          setInstructionsAccepted(false);
+          setDeclarationAccepted(false);
+          setTeamData({ teamName: '', domain: '', teamPassword: '', teamSize: 3 });
+          setMembers([{ name: '', registrationNumber: '', email: '', phoneNumber: '', school: '', program: '', programOther: '', branch: '', campus: '', stay: '', yearOfStudy: '' }]);
+          setCurrentMemberIndex(0);
+          setErrors({});
+          setGlobalError('');
+        }
+      } catch {
+        // Ignore
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   // Validate team password
   const validateTeamPassword = (password: string): string | null => {
@@ -502,14 +525,59 @@ export default function RegisterPage() {
     setStep('success');
   };
 
-  const handleNextMember = () => {
+  const checkMemberAgainstRegistered = async (member: TeamMember, memberIdx: number, currentMembers: TeamMember[]): Promise<string | null> => {
+    const candidateEmail = normalizeEmail(member.email);
+    const candidatePhone = normalizePhone(member.phoneNumber);
+    const candidateReg = normalizeRegistration(member.registrationNumber);
+    const mLabel = memberLabel(memberIdx);
+
+    // Check against already-entered members in this registration
+    for (let i = 0; i < memberIdx; i++) {
+      const prev = currentMembers[i];
+      const prevLabel = memberLabel(i);
+      if (candidateEmail && normalizeEmail(prev.email) === candidateEmail)
+        return `${mLabel}'s email is the same as ${prevLabel}'s. Please use a different email.`;
+      if (candidatePhone && normalizePhone(prev.phoneNumber) === candidatePhone)
+        return `${mLabel}'s phone number is the same as ${prevLabel}'s. Please use a different phone number.`;
+      if (candidateReg && normalizeRegistration(prev.registrationNumber) === candidateReg)
+        return `${mLabel}'s registration number is the same as ${prevLabel}'s. Please use a different registration number.`;
+    }
+
+    // Check against already-registered teams (Supabase first, then localStorage)
+    let registeredTeams: any[] = [];
+    try {
+      if (isSupabaseConfigured()) {
+        const rows = await listTeamsWithMembers();
+        if (Array.isArray(rows)) registeredTeams = rows;
+      }
+    } catch { /* fall through */ }
+    if (!registeredTeams.length) {
+      try { registeredTeams = JSON.parse(localStorage.getItem('registeredTeams') || '[]'); } catch { registeredTeams = []; }
+    }
+
+    for (const existingTeam of registeredTeams) {
+      const existingMembers = Array.isArray(existingTeam?.members) ? existingTeam.members : [];
+      const eName = String(existingTeam?.teamName || 'another team');
+      for (const existingMember of existingMembers) {
+        if (candidateEmail && normalizeEmail(existingMember?.email || '') === candidateEmail)
+          return `${mLabel}'s email is already registered in team "${eName}". Please use a different email.`;
+        if (candidatePhone && normalizePhone(existingMember?.phoneNumber || '') === candidatePhone)
+          return `${mLabel}'s phone number is already registered in team "${eName}". Please use a different phone number.`;
+        if (candidateReg && normalizeRegistration(existingMember?.registrationNumber || '') === candidateReg)
+          return `${mLabel}'s registration number is already registered in team "${eName}". Please use a different registration number.`;
+      }
+    }
+
+    return null;
+  };
+
+  const handleNextMember = async () => {
     const currentIndex = currentMemberIndex;
-    const fieldError = (field: string) => errors[`member${currentIndex}_${field}`] || '';
-    
-    // Validate current member
+
+    // Validate current member fields
     const newErrors: Record<string, string> = {};
     const member = members[currentIndex];
-    
+
     if (!member.name.trim()) newErrors[`member${currentIndex}_name`] = 'Name is required';
     if (!member.registrationNumber.trim()) newErrors[`member${currentIndex}_registrationNumber`] = 'Registration number is required';
     if (!member.email.trim()) newErrors[`member${currentIndex}_email`] = 'Email is required';
@@ -530,7 +598,17 @@ export default function RegisterPage() {
       return;
     }
 
+    // Check for duplicate email / phone / reg against team-mates and registered teams
     setErrors({});
+    setGlobalError('');
+    setIsCheckingMember(true);
+    const conflict = await checkMemberAgainstRegistered(member, currentIndex, members);
+    setIsCheckingMember(false);
+    if (conflict) {
+      setGlobalError(conflict);
+      return;
+    }
+
     if (currentMemberIndex < teamData.teamSize - 1) {
       setCurrentMemberIndex(currentMemberIndex + 1);
     }
@@ -779,14 +857,16 @@ export default function RegisterPage() {
                 {currentMemberIndex < teamData.teamSize - 1 ? (
                   <button
                     onClick={handleNextMember}
-                    className="hh-btn flex-1 py-3"
+                    disabled={isCheckingMember}
+                    className="hh-btn flex-1 py-3 disabled:opacity-60"
                   >
-                    Next Member
+                    {isCheckingMember ? 'Checking...' : 'Next Member'}
                   </button>
                 ) : (
                   <button
                     onClick={handleMembersSubmit}
-                    className="hh-btn flex-1 py-3"
+                    disabled={isSubmitting}
+                    className="hh-btn flex-1 py-3 disabled:opacity-60"
                   >
                     {isSubmitting ? 'Registering...' : 'Register as a Team'}
                   </button>
