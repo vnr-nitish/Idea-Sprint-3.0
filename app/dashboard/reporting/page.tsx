@@ -91,8 +91,6 @@ export default function ReportingPage() {
     };
   }, []);
 
-  if (!sessionLoaded) return <main className="hh-page flex items-center justify-center"> <div className="hh-card p-6">Loading session...</div></main>;
-
   useEffect(() => {
     if (!teamData) return;
     void loadAssignment(teamData.teamName);
@@ -112,6 +110,8 @@ export default function ReportingPage() {
       clearInterval(poll);
     };
   }, [teamData]);
+
+  if (!sessionLoaded) return <main className="hh-page flex items-center justify-center"> <div className="hh-card p-6">Loading session...</div></main>;
 
   if (!teamData) return <main className="hh-page flex items-center justify-center"> <div className="hh-card p-6">No session found. Please login.</div></main>;
 

@@ -62,13 +62,6 @@ export default function ProfilePage() {
     };
   }, []);
 
-  if (!sessionLoaded)
-    return (
-      <main className="hh-page flex items-center justify-center">
-        <div className="hh-card p-6">Loading session...</div>
-      </main>
-    );
-
   const getLeadIndex = (): number => {
     const members = Array.isArray(teamDraft?.members) ? teamDraft.members : [];
     if (!members.length) return 0;
@@ -147,6 +140,13 @@ export default function ProfilePage() {
       setSelectedIndex(leadIndex);
     }
   }, [teamDraft, selectedIndex, leadIndex]);
+
+  if (!sessionLoaded)
+    return (
+      <main className="hh-page flex items-center justify-center">
+        <div className="hh-card p-6">Loading session...</div>
+      </main>
+    );
 
   const updateMemberField = (memberIdx: number, field: string, value: string) => {
     if (!isLead || !teamDraft?.members?.[memberIdx]) return;

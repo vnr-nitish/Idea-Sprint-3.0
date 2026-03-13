@@ -64,14 +64,6 @@ export default function SpocPage() {
     };
   }, []);
 
-  if (!sessionLoaded) {
-    return (
-      <main className="hh-page flex items-center justify-center">
-        <div className="hh-card p-6">Loading session...</div>
-      </main>
-    );
-  }
-
   useEffect(() => {
     if (!teamData?.teamName) return;
     void loadAssignment(teamData.teamName);
@@ -91,6 +83,14 @@ export default function SpocPage() {
       clearInterval(poll);
     };
   }, [teamData]);
+
+  if (!sessionLoaded) {
+    return (
+      <main className="hh-page flex items-center justify-center">
+        <div className="hh-card p-6">Loading session...</div>
+      </main>
+    );
+  }
 
   if (!teamData) {
     return (
