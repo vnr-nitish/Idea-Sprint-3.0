@@ -68,11 +68,7 @@ export default function FoodPage() {
   }, [teamData]);
 
   if (!sessionLoaded) {
-    return (
-      <main className="hh-page flex items-center justify-center">
-        <div className="hh-card p-6">Loading session...</div>
-      </main>
-    );
+    return <main className="hh-page" />;
   }
 
   if (!teamData) return (

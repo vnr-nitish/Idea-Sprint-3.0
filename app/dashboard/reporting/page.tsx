@@ -111,7 +111,7 @@ export default function ReportingPage() {
     };
   }, [teamData]);
 
-  if (!sessionLoaded) return <main className="hh-page flex items-center justify-center"> <div className="hh-card p-6">Loading session...</div></main>;
+  if (!sessionLoaded) return <main className="hh-page" />;
 
   if (!teamData) return <main className="hh-page flex items-center justify-center"> <div className="hh-card p-6">No session found. Please login.</div></main>;
 

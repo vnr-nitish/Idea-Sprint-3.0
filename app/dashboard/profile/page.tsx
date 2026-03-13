@@ -143,9 +143,7 @@ export default function ProfilePage() {
 
   if (!sessionLoaded)
     return (
-      <main className="hh-page flex items-center justify-center">
-        <div className="hh-card p-6">Loading session...</div>
-      </main>
+      <main className="hh-page" />
     );
 
   const updateMemberField = (memberIdx: number, field: string, value: string) => {

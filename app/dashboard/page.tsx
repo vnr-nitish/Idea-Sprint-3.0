@@ -17,6 +17,7 @@ type TeamMember = {
 
 export default function DashboardPage() {
   const [teamData, setTeamData] = useState<any>(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
   const [active, setActive] = useState<string | null>(null);
   const [identifier, setIdentifier] = useState<string>("");
   const router = useRouter();
@@ -38,14 +39,30 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const load = async () => {
+      let hasLocalSnapshot = false;
+      try {
+        const snapshot = JSON.parse(localStorage.getItem('currentTeam') || 'null');
+        if (snapshot?.team) {
+          hasLocalSnapshot = true;
+          setTeamData(snapshot.team);
+          setIdentifier(snapshot.identifier || snapshot.identifierNormalized || "");
+        }
+      } catch {
+        // ignore local parse issues
+      }
+
       try {
         const current = await refreshCurrentTeamSession();
         if (current) {
           setTeamData(current.team);
           setIdentifier(current.identifier || current.identifierNormalized || "");
+        } else if (!hasLocalSnapshot) {
+          setTeamData(null);
         }
       } catch (e) {
         console.warn(e);
+      } finally {
+        setSessionChecked(true);
       }
     };
 
@@ -67,6 +84,10 @@ export default function DashboardPage() {
       clearInterval(poll);
     };
   }, []);
+
+  if (!sessionChecked && !teamData) {
+    return <main className="hh-page pt-20" />;
+  }
 
   if (!teamData) {
     return (
