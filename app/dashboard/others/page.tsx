@@ -22,7 +22,7 @@ export default function OthersPage() {
           <button onClick={() => router.push('/dashboard')} className="hh-btn-outline px-4 py-2">← Back to dashboard</button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {OTHER_LINKS.map((item) => (
             <div key={item.title} className="hh-card border-2 border-gitam-200 p-5 flex flex-col gap-4">
               <div className="w-14 h-14 rounded-full border-2 border-antique/80 bg-gitam-600 text-antique flex items-center justify-center text-2xl">
