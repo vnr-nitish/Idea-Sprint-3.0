@@ -242,6 +242,40 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   if (!supabase) return null;
 
   const identifierNormalized = normalizeIdentifier(identifierInput);
+  const identifierLooksLikeEmail = identifierNormalized.includes('@');
+  const directEmail = String(identifierInput || '').trim().toLowerCase();
+  let passwordVerified = false;
+  let authUserId: string | undefined;
+
+  // Fast path for email logins: verify credentials first in Auth.
+  // This improves cross-browser reliability when member lookup queries are RLS-restricted.
+  if (identifierLooksLikeEmail) {
+    try {
+      const signInDirect = await supabase.auth.signInWithPassword({ email: directEmail, password });
+      if (!signInDirect.error) {
+        passwordVerified = true;
+        authUserId = signInDirect.data?.user?.id || undefined;
+      } else {
+        const msg = String(signInDirect.error.message || '').toLowerCase();
+        const isEmailNotConfirmed = msg.includes('email not confirmed') || (signInDirect.error as any).code === 'email_not_confirmed';
+        if (isEmailNotConfirmed) {
+          // Password is valid; user just has not confirmed email.
+          passwordVerified = true;
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    if (!authUserId && passwordVerified) {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        authUserId = userData?.user?.id || undefined;
+      } catch {
+        // ignore
+      }
+    }
+  }
 
   // Step 1: Find member — RPC is SECURITY DEFINER so it works even with RLS enabled.
   // The RPC returns a TABLE (array), so extract the first element.
@@ -264,12 +298,42 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
         `email_normalized.eq.${identifierNormalized},phone_number_normalized.eq.${identifierNormalized},registration_number_normalized.eq.${identifierNormalized}`
       )
       .maybeSingle();
-    if (error || !data) return null;
-    member = data;
+    if (!error && data) {
+      member = data;
+    }
+  }
+
+  // Fallback for RLS-restricted lookups: if Auth is available, resolve member by auth_user_id.
+  if (!member && authUserId) {
+    try {
+      const { data } = await supabase
+        .from('members')
+        .select('id, team_id, email')
+        .eq('auth_user_id', authUserId)
+        .maybeSingle();
+      if (data) member = data;
+    } catch {
+      // ignore
+    }
+  }
+
+  // Last fallback: claim row by normalized email after auth sign-in, then read it.
+  if (!member && authUserId && identifierLooksLikeEmail) {
+    try {
+      const { data } = await supabase
+        .from('members')
+        .update({ auth_user_id: authUserId })
+        .eq('email_normalized', identifierNormalized)
+        .select('id, team_id, email')
+        .maybeSingle();
+      if (data) member = data;
+    } catch {
+      // ignore
+    }
   }
 
   if (!member?.team_id) return null;
-  const email = String(member.email || '').trim();
+  const email = String(member.email || (identifierLooksLikeEmail ? directEmail : '')).trim();
   if (!email) return null;
 
   // Step 2: Fetch full team data via SECURITY DEFINER RPC — works in ANY browser regardless of auth/RLS.
@@ -297,26 +361,27 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   }
 
   // Step 3: Verify password via Supabase Auth.
-  const signIn = await supabase.auth.signInWithPassword({ email, password });
-  if (signIn.error) {
-    // "Email not confirmed" means Supabase DID validate the password — credentials are correct,
-    // the email just hasn't been clicked yet (common when logging in from a second browser).
-    const isEmailNotConfirmed =
-      signIn.error.message?.toLowerCase().includes('email not confirmed') ||
-      (signIn.error as any).code === 'email_not_confirmed';
+  if (!passwordVerified) {
+    const signIn = await supabase.auth.signInWithPassword({ email, password });
+    if (signIn.error) {
+      // "Email not confirmed" means Supabase DID validate the password — credentials are correct.
+      const isEmailNotConfirmed =
+        signIn.error.message?.toLowerCase().includes('email not confirmed') ||
+        (signIn.error as any).code === 'email_not_confirmed';
 
-    if (!isEmailNotConfirmed) {
-      // Different error — user may not exist in Auth yet; attempt sign-up (first ever login)
-      const signUp = await supabase.auth.signUp({ email, password });
-      if (signUp.error) return null;
+      if (!isEmailNotConfirmed) {
+        // Different error — user may not exist in Auth yet; attempt sign-up (first ever login)
+        const signUp = await supabase.auth.signUp({ email, password });
+        if (signUp.error) return null;
+      }
+    } else {
+      authUserId = signIn.data?.user?.id || authUserId;
     }
-    // If email not confirmed: password IS valid — continue building the session
   }
 
   // Step 4: Bind auth uid to member row (best-effort, non-blocking)
   try {
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData?.user?.id;
+    const userId = authUserId || (await supabase.auth.getUser()).data?.user?.id;
     if (userId) {
       void supabase.from('members').update({ auth_user_id: userId }).eq('id', member.id);
     }

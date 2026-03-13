@@ -120,7 +120,7 @@ export default function Navbar() {
               </>
             ) : null}
 
-            {isAnyLoggedIn ? (
+            {!showAuthButtons && isAnyLoggedIn ? (
               <button
                 onClick={handleLogout}
                 className="hh-btn"
