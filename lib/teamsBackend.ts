@@ -370,9 +370,9 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
         (signIn.error as any).code === 'email_not_confirmed';
 
       if (!isEmailNotConfirmed) {
-        // Different error — user may not exist in Auth yet; attempt sign-up (first ever login)
-        const signUp = await supabase.auth.signUp({ email, password });
-        if (signUp.error) return null;
+        // Auto sign-up at login can trigger confirmation emails and confuse participants.
+        // Keep login strict: only existing valid credentials are accepted.
+        return null;
       }
     } else {
       authUserId = signIn.data?.user?.id || authUserId;
