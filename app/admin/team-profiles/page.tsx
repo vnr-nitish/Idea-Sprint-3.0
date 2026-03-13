@@ -6,7 +6,7 @@ import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, updateMember, updateTeam } from '@/lib/teamsBackend';
 import { deleteAllNocForTeam } from '@/lib/nocBackend';
 import { deleteAllPptForTeam } from '@/lib/pptBackend';
-import { listReportingAssignments, listReportingSpocs, upsertReportingAssignment } from '@/lib/reportingBackend';
+import { listReportingAssignments } from '@/lib/reportingBackend';
 
 export default function TeamProfilesPage() {
   const router = useRouter();
@@ -30,8 +30,6 @@ export default function TeamProfilesPage() {
   const [spocFilter, setSpocFilter] = useState('All');
   const [teamLeadOverrides, setTeamLeadOverrides] = useState<Record<string, string>>({});
   const [reportingAssignmentsMap, setReportingAssignmentsMap] = useState<Record<string, any>>({});
-  const [reportingSpocs, setReportingSpocs] = useState<any[]>([]);
-
   // Hide global navbar on this page
   useEffect(() => {
     const navbar = document.querySelector('nav');
@@ -133,34 +131,21 @@ export default function TeamProfilesPage() {
       }
     } catch {}
 
-    // Load reporting assignment map and SPOCs for venue/SPOC editing in modal.
+    // Load reporting assignment map for venue/SPOC display in tables and filters.
     try {
       const map = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
       if (map && typeof map === 'object') {
         setReportingAssignmentsMap(map);
       }
     } catch {}
-    try {
-      const spocs = JSON.parse(localStorage.getItem('reportingSpocs') || '[]');
-      setReportingSpocs(Array.isArray(spocs) ? spocs : []);
-    } catch {
-      setReportingSpocs([]);
-    }
 
     if (isSupabaseConfigured()) {
       void (async () => {
         try {
-          const [remoteAssignments, remoteSpocs] = await Promise.all([
-            listReportingAssignments(),
-            listReportingSpocs(),
-          ]);
+          const remoteAssignments = await listReportingAssignments();
           if (remoteAssignments && typeof remoteAssignments === 'object' && Object.keys(remoteAssignments).length) {
             setReportingAssignmentsMap(remoteAssignments as Record<string, any>);
             localStorage.setItem('reportingAssignments', JSON.stringify(remoteAssignments));
-          }
-          if (Array.isArray(remoteSpocs) && remoteSpocs.length) {
-            setReportingSpocs(remoteSpocs as any[]);
-            localStorage.setItem('reportingSpocs', JSON.stringify(remoteSpocs));
           }
         } catch {
           // Keep local fallback.
@@ -180,6 +165,27 @@ export default function TeamProfilesPage() {
 
     return () => clearInterval(poll);
   }, [editingTeamIndex]);
+
+  useEffect(() => {
+    if (editingTeamIndex === null || !teamDraft) return;
+
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevBodyPaddingRight = document.body.style.paddingRight;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.body.style.paddingRight = prevBodyPaddingRight;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, [editingTeamIndex, teamDraft]);
 
   const getMemberIdentity = (member: any, fallbackIndex: number): string => {
     return String(
@@ -443,61 +449,6 @@ export default function TeamProfilesPage() {
     return String(assignment?.spoc?.name || assignment?.name || '').trim();
   };
 
-  const getAssignedSpocId = (teamName: string): string => {
-    const assignment = reportingAssignmentsMap[String(teamName || '').trim()] || {};
-    const explicitId = String(assignment?.spoc?.id || assignment?.id || '').trim();
-    if (explicitId) return explicitId;
-    const spocName = getSpocNameFromAssignment(assignment);
-    if (!spocName) return '';
-    const found = reportingSpocs.find((s: any) => String(s?.name || '').trim() === spocName);
-    return String(found?.id || '').trim();
-  };
-
-  const updateReportingAssignmentForTeam = (teamName: string, patch: { venue?: string; spocId?: string }) => {
-    const tn = String(teamName || '').trim();
-    if (!tn) return;
-
-    const current = { ...reportingAssignmentsMap };
-    const existing = current[tn] || {};
-    const next = { ...existing };
-
-    if (patch.venue !== undefined) {
-      next.venue = patch.venue;
-    }
-
-    if (patch.spocId !== undefined) {
-      const selectedSpoc = reportingSpocs.find((s: any) => String(s?.id || '') === String(patch.spocId));
-      if (selectedSpoc) {
-        next.spoc = {
-          id: selectedSpoc.id,
-          name: selectedSpoc.name,
-          email: selectedSpoc.email,
-          phone: selectedSpoc.phone,
-        };
-      } else {
-        delete next.spoc;
-      }
-    }
-
-    next.updatedAt = new Date().toISOString();
-    current[tn] = next;
-    setReportingAssignmentsMap(current);
-    try {
-      localStorage.setItem('reportingAssignments', JSON.stringify(current));
-      try { window.dispatchEvent(new StorageEvent('storage', { key: 'reportingAssignments', newValue: JSON.stringify(current) })); } catch {}
-    } catch {}
-    if (isSupabaseConfigured()) {
-      void upsertReportingAssignment({
-        teamName: tn,
-        venue: next.venue,
-        date: next.date,
-        time: next.time,
-        spocId: String(next?.spoc?.id || ''),
-        spoc: next.spoc,
-      });
-    }
-  };
-
   const getSpocForTeam = (teamName: string): string => {
     const assignment = reportingAssignmentsMap[String(teamName || '').trim()] || {};
     const spocName = getSpocNameFromAssignment(assignment);
@@ -544,10 +495,6 @@ export default function TeamProfilesPage() {
   const uniqueTeamSizes = [3, 4];
   const uniqueVenues = Array.from(new Set(registered.map((t:any)=>getVenueForTeam(t)).filter(Boolean)));
   const uniqueSpocs = Array.from(new Set(registered.map((t:any)=>getSpocForTeam(t.teamName)).filter((s:string)=>s && s!=='-')));
-  const venueOptionsForEditor = Array.from(new Set([
-    ...VENUE_OPTIONS,
-    ...uniqueVenues.map((v:any) => String(v || '').trim()).filter(Boolean),
-  ]));
 
   const filteredTeams = registered.filter((t:any)=>{
     if (campusFilter !== 'All') {
@@ -1235,39 +1182,7 @@ export default function TeamProfilesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-              <div>
-                <label className="text-sm text-gitam-700">Venue</label>
-                <select
-                  value={String(reportingAssignmentsMap[String(teamDraft.teamName || '').trim()]?.venue || teamDraft.venue || teamDraft.zone || '')}
-                  onChange={(e) => {
-                    const venue = e.target.value;
-                    setTeamDraft({ ...teamDraft, venue, zone: venue });
-                    updateReportingAssignmentForTeam(String(teamDraft.teamName || '').trim(), { venue });
-                  }}
-                  className="hh-input"
-                >
-                  <option value="">Select Venue</option>
-                  {venueOptionsForEditor.map((v: string) => (
-                    <option key={v} value={v}>{v}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm text-gitam-700">SPOC</label>
-                <select
-                  value={getAssignedSpocId(String(teamDraft.teamName || '').trim())}
-                  onChange={(e) => updateReportingAssignmentForTeam(String(teamDraft.teamName || '').trim(), { spocId: e.target.value })}
-                  className="hh-input"
-                >
-                  <option value="">Select SPOC</option>
-                  {reportingSpocs.map((s: any) => (
-                    <option key={String(s.id)} value={String(s.id)}>
-                      {String(s.name || 'Unnamed SPOC')}
-                    </option>
-                  ))}
-                </select>
-              </div>
+            <div className="mb-4 max-w-md">
               <div>
                 <label className="text-sm text-gitam-700">Select Team Lead</label>
                 <select

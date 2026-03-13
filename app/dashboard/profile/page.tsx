@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { updateMember } from '@/lib/teamsBackend';
@@ -13,6 +13,7 @@ export default function ProfilePage() {
   const router = useRouter();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
+  const draftDirtyRef = useRef(false);
 
   const normalizeId = (value: string) => {
     const trimmed = String(value || '').trim();
@@ -27,8 +28,13 @@ export default function ProfilePage() {
         const current = await refreshCurrentTeamSession();
         if (current) {
           setTeamData(current.team);
-          setTeamDraft(JSON.parse(JSON.stringify(current.team)));
           setIdentifier(current.identifier || current.identifierNormalized || "");
+          setTeamDraft((prev: any) => {
+            if (draftDirtyRef.current && prev) {
+              return prev;
+            }
+            return JSON.parse(JSON.stringify(current.team));
+          });
         }
       } catch (e) {
         console.warn(e);
@@ -135,6 +141,7 @@ export default function ProfilePage() {
 
   const updateMemberField = (memberIdx: number, field: string, value: string) => {
     if (!isLead || !teamDraft?.members?.[memberIdx]) return;
+    draftDirtyRef.current = true;
     setTeamDraft((prev: any) => {
       const next = JSON.parse(JSON.stringify(prev || {}));
       if (!next?.members?.[memberIdx]) return prev;
@@ -212,7 +219,10 @@ export default function ProfilePage() {
         }
       }
 
-      setTeamData(JSON.parse(JSON.stringify(teamDraft)));
+      const savedDraft = JSON.parse(JSON.stringify(teamDraft));
+      draftDirtyRef.current = false;
+      setTeamData(savedDraft);
+      setTeamDraft(savedDraft);
       alert('Member details saved successfully.');
     } catch (e) {
       console.warn(e);

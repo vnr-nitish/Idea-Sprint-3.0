@@ -64,6 +64,18 @@ const formatDisplayDate = (value: string): string => {
   return `${day} ${month} ${year}`;
 };
 
+const normalizeAssignmentDraft = (value?: ReportingAssignment) => ({
+  venue: String(value?.venue || ''),
+  date: String(value?.date || ''),
+  time: String(value?.time || ''),
+});
+
+const sameDraftValues = (left?: ReportingAssignment, right?: ReportingAssignment) => {
+  const a = normalizeAssignmentDraft(left);
+  const b = normalizeAssignmentDraft(right);
+  return a.venue === b.venue && a.date === b.date && a.time === b.time;
+};
+
 export default function AdminReportingPage() {
   const router = useRouter();
   const [ok, setOk] = useState(false);
@@ -76,6 +88,10 @@ export default function AdminReportingPage() {
   editingRef.current = editing;
   const selectedRef = useRef(selected);
   selectedRef.current = selected;
+  const assignmentsRef = useRef(assignments);
+  assignmentsRef.current = assignments;
+  const draftsRef = useRef(drafts);
+  draftsRef.current = drafts;
 
   const [campusFilter, setCampusFilter] = useState<string>('All');
   const [domainFilter, setDomainFilter] = useState<string>('All');
@@ -101,6 +117,42 @@ export default function AdminReportingPage() {
   const [bulkVenue, setBulkVenue] = useState<string>('');
   const [bulkDate, setBulkDate] = useState<string>('');
   const [bulkTime, setBulkTime] = useState<string>('');
+
+  const dispatchReportingAssignmentsUpdate = (next: Record<string, ReportingAssignment>) => {
+    const payload = JSON.stringify(next);
+    try {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'reportingAssignments', newValue: payload }));
+    } catch {
+      // Ignore environments that don't support constructing StorageEvent.
+    }
+  };
+
+  const buildDraftsFromAssignments = (
+    rows: any[],
+    latestAssignments: Record<string, ReportingAssignment>,
+    previousDrafts?: Record<string, ReportingAssignment>,
+  ) => {
+    const nextDrafts: Record<string, ReportingAssignment> = {};
+    (rows || []).forEach((t: any) => {
+      const teamName = String(t?.teamName || '');
+      if (!teamName) return;
+
+      const saved = latestAssignments?.[teamName] || {};
+      const previous = previousDrafts?.[teamName];
+      const keepPrevious = previous && !sameDraftValues(previous, assignmentsRef.current?.[teamName]);
+
+      nextDrafts[teamName] = keepPrevious
+        ? normalizeAssignmentDraft(previous)
+        : normalizeAssignmentDraft(saved);
+    });
+    return nextDrafts;
+  };
+
+  const hasPendingDraftChanges = () => {
+    const currentDrafts = draftsRef.current || {};
+    const currentAssignments = assignmentsRef.current || {};
+    return Object.keys(currentDrafts).some((teamName) => !sameDraftValues(currentDrafts[teamName], currentAssignments[teamName]));
+  };
 
   useEffect(() => {
     try {
@@ -133,14 +185,15 @@ export default function AdminReportingPage() {
       }
       setTeams(Array.isArray(rows) ? rows : []);
 
-      const map = readLocalJSON<Record<string, ReportingAssignment>>('reportingAssignments', {});
-      setAssignments(map || {});
+      let latestAssignments: Record<string, ReportingAssignment> = readLocalJSON<Record<string, ReportingAssignment>>('reportingAssignments', {});
+      setAssignments(latestAssignments || {});
 
       if (isSupabaseConfigured()) {
         try {
           const remoteAssignments = await listReportingAssignments();
           if (remoteAssignments && Object.keys(remoteAssignments).length) {
-            setAssignments(remoteAssignments as Record<string, ReportingAssignment>);
+            latestAssignments = remoteAssignments as Record<string, ReportingAssignment>;
+            setAssignments(latestAssignments);
             localStorage.setItem('reportingAssignments', JSON.stringify(remoteAssignments));
           }
         } catch {
@@ -148,17 +201,7 @@ export default function AdminReportingPage() {
         }
       }
 
-      const nextDrafts: Record<string, ReportingAssignment> = {};
-      (rows || []).forEach((t: any) => {
-        const teamName = String(t?.teamName || '');
-        if (!teamName) return;
-        const existing = map?.[teamName] || {};
-        nextDrafts[teamName] = {
-          venue: existing.venue || '',
-          date: existing.date || '',
-          time: existing.time || '',
-        };
-      });
+      const nextDrafts = buildDraftsFromAssignments(rows || [], latestAssignments || {}, draftsRef.current);
       setDrafts(nextDrafts);
       setEditing({});
       setSelected({});
@@ -173,7 +216,7 @@ export default function AdminReportingPage() {
     const poll = setInterval(() => {
       const hasEditing = Object.values(editingRef.current).some(Boolean);
       const hasSelection = Object.values(selectedRef.current).some(Boolean);
-      if (hasEditing || hasSelection) return;
+      if (hasEditing || hasSelection || hasPendingDraftChanges()) return;
 
       void (async () => {
         let rows: any[] | null = null;
@@ -204,17 +247,7 @@ export default function AdminReportingPage() {
         }
         setAssignments(latestAssignments);
 
-        const nextDrafts: Record<string, ReportingAssignment> = {};
-        (rows || []).forEach((t: any) => {
-          const teamName = String(t?.teamName || '');
-          if (!teamName) return;
-          const existing = latestAssignments?.[teamName] || {};
-          nextDrafts[teamName] = {
-            venue: existing.venue || '',
-            date: existing.date || '',
-            time: existing.time || '',
-          };
-        });
+        const nextDrafts = buildDraftsFromAssignments(rows || [], latestAssignments, draftsRef.current);
         setDrafts(nextDrafts);
       })();
     }, 2000);
@@ -403,6 +436,7 @@ export default function AdminReportingPage() {
     try {
       localStorage.setItem('reportingAssignments', JSON.stringify(next));
       setAssignments(next);
+      dispatchReportingAssignmentsUpdate(next);
       if (isSupabaseConfigured()) {
         void upsertManyReportingAssignments(next as any);
       }
@@ -497,6 +531,7 @@ export default function AdminReportingPage() {
     try {
       localStorage.setItem('reportingAssignments', JSON.stringify(next));
       setAssignments(next);
+      dispatchReportingAssignmentsUpdate(next);
       if (isSupabaseConfigured()) {
         void upsertManyReportingAssignments(next as any);
       }

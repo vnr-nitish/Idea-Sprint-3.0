@@ -27,6 +27,7 @@ export default function AdminFoodCouponsPage(){
   const [attendanceFilter, setAttendanceFilter] = useState('All');
   const [dinnerRedeemFilter, setDinnerRedeemFilter] = useState('All');
   const [lunchRedeemFilter, setLunchRedeemFilter] = useState('All');
+  const isAnyModalOpen = !!selectedTeam || !!individualModal;
 
   useEffect(() => {
     const navbar = document.querySelector('nav');
@@ -36,6 +37,26 @@ export default function AdminFoodCouponsPage(){
       if (navbar) (navbar as HTMLElement).style.display = '';
     };
   }, []);
+  useEffect(() => {
+    if (!isAnyModalOpen) return;
+
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevBodyPaddingRight = document.body.style.paddingRight;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.body.style.paddingRight = prevBodyPaddingRight;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, [isAnyModalOpen]);
 
   useEffect(()=>{
     (async () => {
@@ -132,6 +153,14 @@ export default function AdminFoodCouponsPage(){
       return [];
     }
   };
+  const getCouponMemberId = (member: any, fallbackIndex?: number): string => {
+    return String(
+      member?.registrationNumber ||
+      member?.email ||
+      member?.name ||
+      (fallbackIndex !== undefined ? `member${fallbackIndex}` : '')
+    );
+  };
 
   const getMealRedeemedCountForTeam = (teamName: string, meal: 'Dinner' | 'Lunch'): number => {
     const arr = getCouponsForTeam(teamName);
@@ -152,6 +181,10 @@ export default function AdminFoodCouponsPage(){
     const arr = getCouponsForTeam(teamName);
     const found = arr.find((c: any) => String(c?.memberId || '') === String(memberKey) && String(c?.meal || '') === meal);
     return found?.redeemed ? 'Redeemed' : 'Not redeemed';
+  };
+  const closeIndividualModal = () => {
+    setIndividualModal(null);
+    setIndividualModalAllCoupons(null);
   };
 
   const normalizeDomain = (value: any) => {
@@ -408,6 +441,7 @@ export default function AdminFoodCouponsPage(){
       localStorage.setItem(key, JSON.stringify(individualModalAllCoupons));
       localStorage.setItem(`foodCoupons_${teamName}`, JSON.stringify(individualModalAllCoupons));
       syncCouponsBackend(String(teamName || ''), individualModalAllCoupons);
+      closeIndividualModal();
       alert('Saved');
     }catch(e){
       alert('Save failed');
@@ -430,6 +464,7 @@ export default function AdminFoodCouponsPage(){
   // Individuals list flattened
   const individuals = useMemo(()=> registered.flatMap(t => (t.members||[]).map((m:any, idx:number)=>({
     ...m,
+    couponMemberId: getCouponMemberId(m, idx),
     teamName: t.teamName,
     campus: m.campus|| (t.members||[])[0]?.campus,
     memberKey: m.email || m.registrationNumber || idx,
@@ -462,8 +497,8 @@ export default function AdminFoodCouponsPage(){
     if (venueFilter !== 'All' && getVenueForTeam(m.teamName) !== venueFilter) return false;
     if (spocFilter !== 'All' && getSpocForTeam(m.teamName) !== spocFilter) return false;
     if (attendanceFilter !== 'All' && getMemberAttendanceDisplay(m.teamName, String(m.memberKey)) !== attendanceFilter) return false;
-    if (dinnerRedeemFilter !== 'All' && getMemberMealStatus(m.teamName, String(m.memberKey), 'Dinner') !== dinnerRedeemFilter) return false;
-    if (lunchRedeemFilter !== 'All' && getMemberMealStatus(m.teamName, String(m.memberKey), 'Lunch') !== lunchRedeemFilter) return false;
+    if (dinnerRedeemFilter !== 'All' && getMemberMealStatus(m.teamName, String(m.couponMemberId), 'Dinner') !== dinnerRedeemFilter) return false;
+    if (lunchRedeemFilter !== 'All' && getMemberMealStatus(m.teamName, String(m.couponMemberId), 'Lunch') !== lunchRedeemFilter) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       const name = String(m.name || '').toLowerCase();
@@ -653,8 +688,8 @@ export default function AdminFoodCouponsPage(){
                       <td className="p-3 border-r border-gitam-200 whitespace-nowrap">{getVenueForTeam(m.teamName)}</td>
                       <td className="p-3 border-r border-gitam-200 whitespace-nowrap">{getSpocForTeam(m.teamName)}</td>
                       <td className="p-3 border-r border-gitam-200 whitespace-nowrap">{getMemberAttendanceDisplay(m.teamName, String(m.memberKey))}</td>
-                      <td className="p-3 border-r border-gitam-200 whitespace-nowrap">{getMemberMealStatus(m.teamName, String(m.memberKey), 'Dinner')}</td>
-                      <td className="p-3 border-r border-gitam-200 whitespace-nowrap">{getMemberMealStatus(m.teamName, String(m.memberKey), 'Lunch')}</td>
+                      <td className="p-3 border-r border-gitam-200 whitespace-nowrap">{getMemberMealStatus(m.teamName, String(m.couponMemberId), 'Dinner')}</td>
+                      <td className="p-3 border-r border-gitam-200 whitespace-nowrap">{getMemberMealStatus(m.teamName, String(m.couponMemberId), 'Lunch')}</td>
                       <td className="p-3"><div className="flex gap-2"><button onClick={()=>openIndividualModal(m)} className="px-4 py-2 bg-gitam-700 text-antique rounded-lg hover:bg-gitam-600 transition-colors">Open</button></div></td>
                     </tr>
                   ))}
@@ -676,7 +711,7 @@ export default function AdminFoodCouponsPage(){
                 <div className="text-sm text-gitam-600">Team: {individualModal.teamName}</div>
               </div>
               <div className="flex gap-2">
-                <button onClick={() => { setIndividualModal(null); setIndividualModalAllCoupons(null); }} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors">Close</button>
+                <button onClick={closeIndividualModal} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors">Close</button>
               </div>
             </div>
 
