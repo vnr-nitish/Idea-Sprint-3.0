@@ -369,12 +369,36 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
         signIn.error.message?.toLowerCase().includes('email not confirmed') ||
         (signIn.error as any).code === 'email_not_confirmed';
 
-      if (!isEmailNotConfirmed) {
-        // Auto sign-up at login can trigger confirmation emails and confuse participants.
-        // Keep login strict: only existing valid credentials are accepted.
-        return null;
+      if (isEmailNotConfirmed) {
+        passwordVerified = true;
+      } else {
+        // Cross-device reliability: if Auth user is missing for this email,
+        // bootstrap it with the same credentials and continue.
+        // Set redirect to production URL so any confirmation link is never localhost.
+        const appUrl =
+          process.env.NEXT_PUBLIC_APP_URL ||
+          'https://ideasprint-tmgc-gcgc.vercel.app';
+
+        const signUp = await supabase.auth.signUp({
+          email,
+          password,
+          options: { emailRedirectTo: `${appUrl}/login` },
+        });
+
+        if (signUp.error) {
+          const msg = String(signUp.error.message || '').toLowerCase();
+          const alreadyExists = msg.includes('already registered') || msg.includes('already exists');
+          if (!alreadyExists) return null;
+
+          // User exists but sign-in failed and sign-up is blocked => treat as invalid credentials.
+          return null;
+        }
+
+        passwordVerified = true;
+        authUserId = signUp.data?.user?.id || authUserId;
       }
     } else {
+      passwordVerified = true;
       authUserId = signIn.data?.user?.id || authUserId;
     }
   }
