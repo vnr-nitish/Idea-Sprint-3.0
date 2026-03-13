@@ -510,7 +510,11 @@ export default function RegisterPage() {
         await fetch('/api/auth/bootstrap-team-users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ teamPassword: teamData.teamPassword, members }),
+          body: JSON.stringify({
+            teamId: supabaseTeamId,
+            teamPassword: teamData.teamPassword,
+            members,
+          }),
         });
       } catch {
         // Non-blocking: registration should still complete even if bootstrap call fails.
