@@ -247,6 +247,13 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   let passwordVerified = false;
   let authUserId: string | undefined;
   let resolvedTeamFromApi: TeamRecord | null = null;
+  const trySignInWithEmail = async (email: string, pwd: string) => {
+    try {
+      return await supabase.auth.signInWithPassword({ email, password: pwd });
+    } catch {
+      return null;
+    }
+  };
 
   // Fast path for email logins: verify credentials first in Auth.
   // This improves cross-browser reliability when member lookup queries are RLS-restricted.
@@ -397,7 +404,8 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
 
   // Step 3: Verify password via Supabase Auth.
   if (!passwordVerified) {
-    const signIn = await supabase.auth.signInWithPassword({ email, password });
+    const signIn = await trySignInWithEmail(email, password);
+    if (!signIn) return null;
     if (signIn.error) {
       // "Email not confirmed" means Supabase DID validate the password — credentials are correct.
       const isEmailNotConfirmed =
@@ -425,8 +433,33 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
           const alreadyExists = msg.includes('already registered') || msg.includes('already exists');
           if (!alreadyExists) return null;
 
-          // User exists but sign-in failed and sign-up is blocked => treat as invalid credentials.
-          return null;
+          // Legacy-team self-heal: for already-registered users whose Auth password drifted,
+          // sync this team's member users to the submitted team password, then retry sign-in.
+          try {
+            await fetch('/api/auth/bootstrap-team-users', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ teamId: String(member.team_id), teamPassword: password }),
+            });
+
+            const retry = await trySignInWithEmail(email, password);
+            if (retry && !retry.error) {
+              passwordVerified = true;
+              authUserId = retry.data?.user?.id || authUserId;
+            } else {
+              const retryEmailNotConfirmed =
+                String(retry?.error?.message || '').toLowerCase().includes('email not confirmed') ||
+                (retry?.error as any)?.code === 'email_not_confirmed';
+              if (retryEmailNotConfirmed) {
+                passwordVerified = true;
+              } else {
+                return null;
+              }
+            }
+          } catch {
+            return null;
+          }
+          if (!passwordVerified) return null;
         }
 
         passwordVerified = true;
