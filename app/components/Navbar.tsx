@@ -102,7 +102,7 @@ export default function Navbar() {
 
           {/* Auth / Logout Buttons */}
           <div className="flex gap-4">
-            {showAuthButtons && !isAnyLoggedIn ? (
+            {showAuthButtons && !loggedIn ? (
               <>
                 <Link
                   href="/login"

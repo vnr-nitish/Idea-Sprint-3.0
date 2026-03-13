@@ -243,15 +243,19 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
 
   const identifierNormalized = normalizeIdentifier(identifierInput);
 
-  // Prefer RPC if you created it (see SUPABASE_SETUP.md)
+  // Step 1: Find member — RPC is SECURITY DEFINER so it works even with RLS enabled.
+  // The RPC returns a TABLE (array), so extract the first element.
   let member: any | null = null;
   try {
     const rpc = await supabase.rpc('find_member_for_login', { identifier: identifierNormalized });
-    if (!rpc.error && rpc.data) member = rpc.data;
+    if (!rpc.error && rpc.data) {
+      member = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
+    }
   } catch {
     // ignore
   }
 
+  // Fallback: direct query (works when RLS is disabled)
   if (!member) {
     const { data, error } = await supabase
       .from('members')
@@ -264,25 +268,98 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
     member = data;
   }
 
+  if (!member?.team_id) return null;
   const email = String(member.email || '').trim();
   if (!email) return null;
 
-  // Try sign-in (Auth). If user doesn't exist yet, we attempt sign-up.
+  // Step 2: Fetch full team data via SECURITY DEFINER RPC — works in ANY browser regardless of auth/RLS.
+  // Run this SQL in your Supabase SQL editor to create the function:
+  //
+  // CREATE OR REPLACE FUNCTION public.get_login_team_data(p_team_id uuid)
+  // RETURNS json LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+  // DECLARE v_result json; BEGIN
+  //   SELECT json_build_object('id',t.id::text,'team_name',t.team_name,'domain',t.domain,
+  //     'created_at',t.created_at::text,'members',(SELECT json_agg(json_build_object(
+  //       'id',m.id::text,'member_index',m.member_index,'name',m.name,
+  //       'registration_number',m.registration_number,'email',m.email,
+  //       'phone_number',m.phone_number,'school',m.school,'program',m.program,
+  //       'program_other',m.program_other,'branch',m.branch,'campus',m.campus,
+  //       'stay',m.stay,'year_of_study',m.year_of_study) ORDER BY m.member_index)
+  //     FROM public.members m WHERE m.team_id=p_team_id))
+  //   INTO v_result FROM public.teams t WHERE t.id=p_team_id;
+  //   RETURN v_result; END; $$;
+  let teamRpcData: any = null;
+  try {
+    const { data, error } = await supabase.rpc('get_login_team_data', { p_team_id: member.team_id });
+    if (!error && data) teamRpcData = data;
+  } catch {
+    // ignore — will fall back to direct queries below
+  }
+
+  // Step 3: Verify password via Supabase Auth.
   const signIn = await supabase.auth.signInWithPassword({ email, password });
   if (signIn.error) {
-    const signUp = await supabase.auth.signUp({ email, password });
-    if (signUp.error) return null;
+    // "Email not confirmed" means Supabase DID validate the password — credentials are correct,
+    // the email just hasn't been clicked yet (common when logging in from a second browser).
+    const isEmailNotConfirmed =
+      signIn.error.message?.toLowerCase().includes('email not confirmed') ||
+      (signIn.error as any).code === 'email_not_confirmed';
+
+    if (!isEmailNotConfirmed) {
+      // Different error — user may not exist in Auth yet; attempt sign-up (first ever login)
+      const signUp = await supabase.auth.signUp({ email, password });
+      if (signUp.error) return null;
+    }
+    // If email not confirmed: password IS valid — continue building the session
   }
 
-  const { data: userData } = await supabase.auth.getUser();
-  const userId = userData?.user?.id || null;
+  // Step 4: Bind auth uid to member row (best-effort, non-blocking)
+  try {
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData?.user?.id;
+    if (userId) {
+      void supabase.from('members').update({ auth_user_id: userId }).eq('id', member.id);
+    }
+  } catch { /* ignore */ }
 
-  // Bind auth uid to this member row (best-effort)
-  if (userId) {
-    await supabase.from('members').update({ auth_user_id: userId }).eq('id', member.id);
+  // Step 5: Build TeamRecord from RPC data (preferred) or fall back to direct queries
+  if (teamRpcData) {
+    const rpcMembers: any[] = Array.isArray(teamRpcData.members) ? teamRpcData.members : [];
+    const team: TeamRecord = {
+      teamId: teamRpcData.id,
+      teamName: teamRpcData.team_name,
+      domain: teamRpcData.domain || '',
+      teamPassword: '',
+      createdAt: teamRpcData.created_at,
+      members: rpcMembers.map((m: any) => ({
+        id: m.id,
+        name: m.name || '',
+        registrationNumber: m.registration_number || '',
+        email: m.email || '',
+        phoneNumber: m.phone_number || '',
+        school: m.school || '',
+        program: m.program || '',
+        programOther: m.program_other || '',
+        branch: m.branch || '',
+        campus: m.campus || '',
+        stay: m.stay || '',
+        yearOfStudy: m.year_of_study || '',
+      })),
+    };
+    const resolvedMember = rpcMembers.find((m: any) =>
+      normalizeIdentifier(m.email) === identifierNormalized ||
+      normalizeIdentifier(m.registration_number) === identifierNormalized ||
+      normalizeIdentifier(m.phone_number) === identifierNormalized
+    );
+    return {
+      team,
+      identifierNormalized,
+      memberId: resolvedMember?.id || String(member.id),
+      teamId: teamRpcData.id,
+    };
   }
 
-  // Load team and all members for UI
+  // Fallback: direct queries (works when RLS is disabled or auth session is established)
   const { data: teamRow } = await supabase.from('teams').select('id, team_name, domain, created_at').eq('id', member.team_id).maybeSingle();
   const { data: memberRows } = await supabase
     .from('members')
