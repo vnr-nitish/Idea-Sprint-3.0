@@ -246,6 +246,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   const directEmail = String(identifierInput || '').trim().toLowerCase();
   let passwordVerified = false;
   let authUserId: string | undefined;
+  let resolvedTeamFromApi: TeamRecord | null = null;
 
   // Fast path for email logins: verify credentials first in Auth.
   // This improves cross-browser reliability when member lookup queries are RLS-restricted.
@@ -280,10 +281,44 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   // Step 1: Find member — RPC is SECURITY DEFINER so it works even with RLS enabled.
   // The RPC returns a TABLE (array), so extract the first element.
   let member: any | null = null;
+
+  // First fallback: resolve identifier server-side (service-role) so lookup works from any device/browser.
   try {
-    const rpc = await supabase.rpc('find_member_for_login', { identifier: identifierNormalized });
-    if (!rpc.error && rpc.data) {
-      member = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
+    const resolved = await fetch('/api/auth/resolve-member', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identifier: identifierNormalized }),
+    });
+    if (resolved.ok) {
+      const payload = await resolved.json().catch(() => null);
+      if (payload?.member?.id && payload?.member?.teamId) {
+        member = {
+          id: payload.member.id,
+          team_id: payload.member.teamId,
+          email: payload.member.email,
+        };
+      }
+      if (payload?.team?.teamId && payload?.team?.teamName && Array.isArray(payload?.team?.members)) {
+        resolvedTeamFromApi = {
+          teamId: String(payload.team.teamId),
+          teamName: String(payload.team.teamName),
+          domain: String(payload.team.domain || ''),
+          teamPassword: '',
+          createdAt: String(payload.team.createdAt || ''),
+          members: payload.team.members,
+        } as TeamRecord;
+      }
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    if (!member) {
+      const rpc = await supabase.rpc('find_member_for_login', { identifier: identifierNormalized });
+      if (!rpc.error && rpc.data) {
+        member = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
+      }
     }
   } catch {
     // ignore
@@ -445,6 +480,20 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
       identifierNormalized,
       memberId: resolvedMember?.id || String(member.id),
       teamId: teamRpcData.id,
+    };
+  }
+
+  if (resolvedTeamFromApi) {
+    const resolvedMember = resolvedTeamFromApi.members.find((m: any) =>
+      normalizeIdentifier(m.email) === identifierNormalized ||
+      normalizeIdentifier(m.registrationNumber) === identifierNormalized ||
+      normalizeIdentifier(m.phoneNumber) === identifierNormalized
+    );
+    return {
+      team: resolvedTeamFromApi,
+      identifierNormalized,
+      memberId: String(resolvedMember?.id || member.id),
+      teamId: String(resolvedTeamFromApi.teamId || member.team_id),
     };
   }
 
