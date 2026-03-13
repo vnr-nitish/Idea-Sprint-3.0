@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getTeamProblemSelection, listProblemStatements, upsertTeamProblemSelection } from '@/lib/problemBackend';
+import { isSupabaseConfigured } from '@/lib/supabaseClient';
 
 interface ProblemStatement {
   id: string;
@@ -37,18 +38,22 @@ export default function DashboardProblemPage() {
   };
 
   const saveProblemSelection = async () => {
-    if (!team || !pendingCode) return;
+    if (!team) return;
     setSaving(true);
     setSaveMsg('');
     try {
-      const ok = await upsertTeamProblemSelection(String(team.teamName || ''), pendingCode);
+      const normalizedCode = String(pendingCode || '').trim();
+      const ok = isSupabaseConfigured()
+        ? await upsertTeamProblemSelection(String(team.teamName || ''), normalizedCode)
+        : true;
       if (ok) {
-        setSelectedCode(pendingCode);
+        setSelectedCode(normalizedCode);
+        setPendingCode(normalizedCode);
         // update localStorage session
         try {
           const current = JSON.parse(localStorage.getItem('currentTeam') || 'null');
           if (current?.team) {
-            const updated = { ...current, team: { ...current.team, selectedProblem: pendingCode, selectedProblemStatement: pendingCode } };
+            const updated = { ...current, team: { ...current.team, selectedProblem: normalizedCode || null, selectedProblemStatement: normalizedCode || null } };
             localStorage.setItem('currentTeam', JSON.stringify(updated));
           }
         } catch { /* ignore */ }
@@ -107,7 +112,7 @@ export default function DashboardProblemPage() {
           let currentCode = String(teamData.selectedProblemStatement || teamData.selectedProblem || '').trim();
           try {
             const remoteCode = await getTeamProblemSelection(String(teamData.teamName || ''));
-            if (remoteCode) currentCode = String(remoteCode).trim();
+            if (remoteCode !== null) currentCode = String(remoteCode).trim();
           } catch {
             // keep local fallback
           }
@@ -133,11 +138,12 @@ export default function DashboardProblemPage() {
           let currentCode = String(current.team.selectedProblemStatement || current.team.selectedProblem || '').trim();
           try {
             const remoteCode = await getTeamProblemSelection(String(current.team.teamName || ''));
-            if (remoteCode) currentCode = String(remoteCode).trim();
+            if (remoteCode !== null) currentCode = String(remoteCode).trim();
           } catch {
             // keep local fallback
           }
           setSelectedCode(currentCode);
+          setPendingCode(currentCode);
         }
       } catch {
         // ignore
@@ -275,6 +281,14 @@ export default function DashboardProblemPage() {
                 ) : (
                   <div className="mt-3 text-gitam-700/60">No problem statement selected yet.</div>
                 )}
+                {selectedProblem ? (
+                  <div className="mt-4 rounded-xl border border-gitam-200 bg-white/80 p-4 space-y-2">
+                    <div className="text-sm"><span className="font-semibold text-gitam-700">Code:</span> {selectedProblem.code || '-'}</div>
+                    <div className="text-sm"><span className="font-semibold text-gitam-700">Title:</span> {selectedProblem.title || selectedProblem.code || '-'}</div>
+                    <div className="text-sm"><span className="font-semibold text-gitam-700">Description:</span> {selectedProblem.description || '-'}</div>
+                    <div className="text-sm"><span className="font-semibold text-gitam-700">Outcome:</span> {selectedProblem.outcome || '-'}</div>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <div className="space-y-5">
@@ -309,6 +323,14 @@ export default function DashboardProblemPage() {
                     Currently saved: <span className="font-semibold text-gitam-700">{selectedCode}</span>
                   </div>
                 )}
+                {selectedProblem ? (
+                  <div className="rounded-xl border border-gitam-200 bg-gitam-50/40 p-4 space-y-2">
+                    <div className="text-sm"><span className="font-semibold text-gitam-700">Code:</span> {selectedProblem.code || '-'}</div>
+                    <div className="text-sm"><span className="font-semibold text-gitam-700">Title:</span> {selectedProblem.title || selectedProblem.code || '-'}</div>
+                    <div className="text-sm"><span className="font-semibold text-gitam-700">Description:</span> {selectedProblem.description || '-'}</div>
+                    <div className="text-sm"><span className="font-semibold text-gitam-700">Outcome:</span> {selectedProblem.outcome || '-'}</div>
+                  </div>
+                ) : null}
                 <button
                   onClick={() => void saveProblemSelection()}
                   disabled={saving || !pendingCode || pendingCode === selectedCode}

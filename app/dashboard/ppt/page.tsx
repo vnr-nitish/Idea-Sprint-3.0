@@ -260,13 +260,48 @@ export default function PPTPage() {
     try {
       if (!teamData) return;
       const leader = getLeadMember(teamData);
-      if (isSupabaseConfigured() && currentMemberId && leader?.id) {
-        setIsLeader(String(currentMemberId) === String(leader.id));
-        return;
+      const members = Array.isArray(teamData?.members) ? teamData.members : [];
+
+      const currentTokens = Array.from(new Set([
+        normalizeId(String(currentIdentifier || '')),
+        normalizeId(String(currentMemberId || '')),
+        String(currentMemberId || '').trim().toLowerCase(),
+      ].filter(Boolean)));
+
+      const leaderTokens = Array.from(new Set([
+        normalizeId(String(leader?.id || '')),
+        normalizeId(String(leader?.email || '')),
+        normalizeId(String(leader?.phoneNumber || '')),
+        normalizeId(String(leader?.registrationNumber || '')),
+        String(leader?.id || '').trim().toLowerCase(),
+      ].filter(Boolean)));
+
+      let isLeadUser = currentTokens.some((token) => leaderTokens.includes(token));
+
+      if (!isLeadUser && currentTokens.length) {
+        const matchedMember = members.find((m: any) => {
+          const tokens = Array.from(new Set([
+            normalizeId(String(m?.id || '')),
+            normalizeId(String(m?.email || '')),
+            normalizeId(String(m?.phoneNumber || '')),
+            normalizeId(String(m?.registrationNumber || '')),
+            String(m?.id || '').trim().toLowerCase(),
+          ].filter(Boolean)));
+          return currentTokens.some((token) => tokens.includes(token));
+        });
+
+        if (matchedMember) {
+          const matchedTokens = Array.from(new Set([
+            normalizeId(String(matchedMember?.id || '')),
+            normalizeId(String(matchedMember?.email || '')),
+            normalizeId(String(matchedMember?.phoneNumber || '')),
+            normalizeId(String(matchedMember?.registrationNumber || '')),
+            String(matchedMember?.id || '').trim().toLowerCase(),
+          ].filter(Boolean)));
+          isLeadUser = matchedTokens.some((token) => leaderTokens.includes(token));
+        }
       }
-      const currentNorm = normalizeId(currentIdentifier || currentMemberId || '');
-      const leaderTokens = [leader?.email, leader?.phoneNumber, leader?.registrationNumber].map((value: any) => normalizeId(String(value || ''))).filter(Boolean);
-      const isLeadUser = Boolean(currentNorm && leaderTokens.includes(currentNorm));
+
       setIsLeader(isLeadUser);
     } catch {
       setIsLeader(false);

@@ -89,7 +89,7 @@ export const getTeamProblemSelection = async (teamName: string): Promise<string 
     .maybeSingle();
 
   if (error || !data) return null;
-  return String(data.problem_code || '').trim() || null;
+  return String(data.problem_code ?? '').trim();
 };
 
 export const upsertTeamProblemSelection = async (teamName: string, problemCode: string): Promise<boolean> => {

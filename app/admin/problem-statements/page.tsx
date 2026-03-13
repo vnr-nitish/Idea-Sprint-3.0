@@ -87,8 +87,9 @@ export default function AdminProblemStatementsPage() {
 
   const getTeamSelectedCode = useCallback((team: any) => {
     const teamName = String(team?.teamName || '').trim();
-    const fromMap = String(teamSelections?.[teamName] || '').trim();
-    if (fromMap) return fromMap;
+    if (Object.prototype.hasOwnProperty.call(teamSelections || {}, teamName)) {
+      return String(teamSelections?.[teamName] || '').trim();
+    }
     const raw = String(team?.selectedProblemStatement || team?.selectedProblem || '').trim();
     return raw;
   }, [teamSelections]);
@@ -571,7 +572,9 @@ export default function AdminProblemStatementsPage() {
       setEditingTeamKey(null);
       setEditingTeamPsCode('');
       setEditingTeam(null);
+
       setTeamSelections((prev) => ({ ...prev, [teamName]: normalizedCode || '' }));
+
       if (isSupabaseConfigured()) {
         void upsertTeamProblemSelection(teamName, normalizedCode || '');
       }

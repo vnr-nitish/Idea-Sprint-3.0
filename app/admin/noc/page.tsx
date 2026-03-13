@@ -55,6 +55,7 @@ export default function AdminNOCPage(){
   const [backendCounts, setBackendCounts] = useState<Record<string, number>>({});
   const [adminSelectedFiles, setAdminSelectedFiles] = useState<Record<string, File | null>>({});
   const [adminUploadingRows, setAdminUploadingRows] = useState<Record<string, boolean>>({});
+  const isTeamModalOpen = !!selectedTeam;
 
   useEffect(() => {
     const navbar = document.querySelector('nav');
@@ -64,6 +65,27 @@ export default function AdminNOCPage(){
       if (navbar) (navbar as HTMLElement).style.display = '';
     };
   }, []);
+
+  useEffect(() => {
+    if (!isTeamModalOpen) return;
+
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevBodyPaddingRight = document.body.style.paddingRight;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) {
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
+    }
+
+    return () => {
+      document.body.style.overflow = prevBodyOverflow;
+      document.body.style.paddingRight = prevBodyPaddingRight;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+    };
+  }, [isTeamModalOpen]);
 
   useEffect(()=>{
     (async () => {
