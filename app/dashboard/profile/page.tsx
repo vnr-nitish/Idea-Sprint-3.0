@@ -24,6 +24,16 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
+    // Synchronous bootstrap — show content instantly from cached session
+    try {
+      const snapshot = JSON.parse(localStorage.getItem('currentTeam') || 'null');
+      if (snapshot?.team) {
+        setTeamData(snapshot.team);
+        setIdentifier(snapshot.identifier || snapshot.identifierNormalized || '');
+        if (!draftDirtyRef.current) setTeamDraft(JSON.parse(JSON.stringify(snapshot.team)));
+      }
+    } catch { /* ignore */ }
+
     const load = async () => {
       try {
         const current = await refreshCurrentTeamSession();
@@ -141,7 +151,7 @@ export default function ProfilePage() {
     }
   }, [teamDraft, selectedIndex, leadIndex]);
 
-  if (!sessionLoaded)
+  if (!sessionLoaded && !teamData)
     return (
       <main className="hh-page" />
     );

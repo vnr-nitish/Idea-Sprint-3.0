@@ -64,6 +64,12 @@ export default function ReportingPage() {
   };
 
   useEffect(() => {
+    // Synchronous bootstrap — show content instantly from cached session
+    try {
+      const snapshot = JSON.parse(localStorage.getItem('currentTeam') || 'null');
+      if (snapshot?.team) setTeamData(snapshot.team);
+    } catch { /* ignore */ }
+
     const load = async () => {
       try {
         const current = await refreshCurrentTeamSession();
@@ -111,7 +117,7 @@ export default function ReportingPage() {
     };
   }, [teamData]);
 
-  if (!sessionLoaded) return <main className="hh-page" />;
+  if (!sessionLoaded && !teamData) return <main className="hh-page" />;
 
   if (!teamData) return <main className="hh-page flex items-center justify-center"> <div className="hh-card p-6">No session found. Please login.</div></main>;
 

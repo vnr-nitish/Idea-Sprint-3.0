@@ -12,6 +12,12 @@ export default function FoodPage() {
   const router = useRouter();
 
   useEffect(() => {
+    // Synchronous bootstrap — show content instantly from cached session
+    try {
+      const snapshot = JSON.parse(localStorage.getItem('currentTeam') || 'null');
+      if (snapshot?.team) setTeamData(snapshot.team);
+    } catch { /* ignore */ }
+
     const load = async () => {
       try {
         const current = await refreshCurrentTeamSession();
@@ -67,7 +73,7 @@ export default function FoodPage() {
     return () => { window.removeEventListener('storage', onStorage); clearInterval(poll); };
   }, [teamData]);
 
-  if (!sessionLoaded) {
+  if (!sessionLoaded && !teamData) {
     return <main className="hh-page" />;
   }
 

@@ -70,6 +70,17 @@ export default function PPTPage() {
   };
 
   useEffect(() => {
+    // Synchronous bootstrap — show content instantly from cached session
+    try {
+      const snapshot = JSON.parse(localStorage.getItem('currentTeam') || 'null');
+      if (snapshot?.team) {
+        setTeamData(snapshot.team);
+        setCurrentIdentifier(snapshot.identifier || snapshot.identifierNormalized || null);
+        setCurrentMemberId(snapshot.memberId || snapshot.identifier || snapshot.identifierNormalized || null);
+        setTeamId(snapshot.teamId || snapshot.team?.teamId || null);
+      }
+    } catch { /* ignore */ }
+
     const load = async () => {
       try {
         const current = await refreshCurrentTeamSession();
@@ -310,7 +321,7 @@ export default function PPTPage() {
     }
   }, [teamData, currentIdentifier, currentMemberId]);
 
-  if (!sessionLoaded) {
+  if (!sessionLoaded && !teamData) {
     return <main className="hh-page" />;
   }
 

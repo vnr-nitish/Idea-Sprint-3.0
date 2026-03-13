@@ -35,6 +35,12 @@ export default function SpocPage() {
   };
 
   useEffect(() => {
+    // Synchronous bootstrap — show content instantly from cached session
+    try {
+      const snapshot = JSON.parse(localStorage.getItem('currentTeam') || 'null');
+      if (snapshot?.team) setTeamData(snapshot.team);
+    } catch { /* ignore */ }
+
     const load = async () => {
       try {
         const current = await refreshCurrentTeamSession();
@@ -84,7 +90,7 @@ export default function SpocPage() {
     };
   }, [teamData]);
 
-  if (!sessionLoaded) {
+  if (!sessionLoaded && !teamData) {
     return <main className="hh-page" />;
   }
 

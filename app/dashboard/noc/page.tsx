@@ -205,6 +205,8 @@ export default function NOCPage() {
 
   useEffect(() => {
     if (isSupabaseConfigured()) {
+      // Bootstrap instantly from localStorage, then refresh from Supabase in background
+      refreshFromLocal();
       void refreshFromBackend();
       const unsubscribe = subscribeAdminNocChanges(() => {
         void refreshFromBackend();
@@ -347,7 +349,7 @@ export default function NOCPage() {
     }
   };
 
-  if (!sessionLoaded) {
+  if (!sessionLoaded && !teamData) {
     return <main className="hh-page" />;
   }
 
