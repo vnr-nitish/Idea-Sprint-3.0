@@ -56,6 +56,7 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [globalError, setGlobalError] = useState('');
   const [successData, setSuccessData] = useState<any>(null);
+  const [emailStatus, setEmailStatus] = useState<'idle' | 'sending' | 'sent' | 'failed' | 'skipped'>('idle');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCheckingMember, setIsCheckingMember] = useState(false);
 
@@ -502,6 +503,32 @@ export default function RegisterPage() {
       supabaseMembers,
     });
 
+    setEmailStatus('sending');
+
+    // Send registration email to all team members (non-blocking for registration).
+    try {
+      const response = await fetch('/api/registration-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          teamName: teamData.teamName,
+          teamPassword: teamData.teamPassword,
+          domain: teamData.domain,
+          members,
+        }),
+      });
+
+      if (!response.ok) {
+        setEmailStatus('failed');
+      } else {
+        const result = await response.json().catch(() => ({}));
+        if (result?.skipped) setEmailStatus('skipped');
+        else setEmailStatus('sent');
+      }
+    } catch {
+      setEmailStatus('failed');
+    }
+
     // Persist registration to localStorage so user can login later (fallback/offline)
     try {
       let existing = [];
@@ -914,6 +941,26 @@ export default function RegisterPage() {
                     <p className="text-sm text-gitam-700">
                       <strong>Details saved successfully.</strong> You can now continue to login using the registered team credentials.
                     </p>
+                    {emailStatus === 'sending' && (
+                      <p className="text-sm text-gitam-700 mt-2">
+                        Sending confirmation email to all team members...
+                      </p>
+                    )}
+                    {emailStatus === 'sent' && (
+                      <p className="text-sm text-gitam-700 mt-2">
+                        Confirmation email has been sent to all team member emails.
+                      </p>
+                    )}
+                    {emailStatus === 'skipped' && (
+                      <p className="text-sm text-gitam-700 mt-2">
+                        Email service is not configured yet; registration is saved successfully.
+                      </p>
+                    )}
+                    {emailStatus === 'failed' && (
+                      <p className="text-sm text-gitam-700 mt-2">
+                        Registration is saved, but sending confirmation email failed.
+                      </p>
+                    )}
                   </div>
                 </div>
 
