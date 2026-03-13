@@ -558,6 +558,11 @@ export default function AdminReportingPage() {
         return copy;
       });
 
+      setSelected({});
+      setBulkVenue('');
+      setBulkDate('');
+      setBulkTime('');
+
       alert(`Saved ${selectedCount} team(s)`);
     } catch {
       alert('Save failed');

@@ -118,6 +118,7 @@ export default function AdminSpocPage() {
   const [spocFilter, setSpocFilter] = useState<string>('All');
   const [selectedTeams, setSelectedTeams] = useState<Record<string, boolean>>({});
   const [bulkSpocId, setBulkSpocId] = useState('');
+  const syncedAssignmentsRef = useState<Record<string, ReportingAssignment>>({})[0];
 
   // Hide navbar
   useEffect(() => {
@@ -218,13 +219,35 @@ export default function AdminSpocPage() {
   }, []);
 
   useEffect(() => {
-    // Keep draft in sync with saved assignments.
-    const next: Record<string, string> = {};
-    Object.entries(assignments || {}).forEach(([teamName, a]) => {
-      if (a?.spocId) next[teamName] = a.spocId;
+    // Keep draft values stable while the user is selecting from a dropdown.
+    setDraftAssignments((prev) => {
+      const next: Record<string, string> = { ...prev };
+      const lastSynced = syncedAssignmentsRef as unknown as Record<string, ReportingAssignment>;
+
+      Object.keys(assignments || {}).forEach((teamName) => {
+        const savedId = String(assignments?.[teamName]?.spocId || '').trim();
+        const previousSavedId = String(lastSynced?.[teamName]?.spocId || '').trim();
+        const previousDraftId = String(prev?.[teamName] || '').trim();
+
+        if (!(teamName in prev) || previousDraftId === previousSavedId) {
+          next[teamName] = savedId;
+        }
+      });
+
+      Object.keys(prev || {}).forEach((teamName) => {
+        if (!(teamName in (assignments || {})) && !String(prev[teamName] || '').trim()) {
+          delete next[teamName];
+        }
+      });
+
+      Object.keys(lastSynced).forEach((key) => {
+        delete lastSynced[key];
+      });
+      Object.assign(lastSynced, assignments || {});
+
+      return next;
     });
-    setDraftAssignments(next);
-  }, [assignments]);
+  }, [assignments, syncedAssignmentsRef]);
 
   const spocById = useMemo(() => {
     const m = new Map<string, Spoc>();
@@ -368,6 +391,13 @@ export default function AdminSpocPage() {
     if (isSupabaseConfigured()) {
       void upsertManyReportingAssignments(next as any);
     }
+    setDraftAssignments((prev) => {
+      const copy = { ...prev };
+      Object.keys(next || {}).forEach((teamName) => {
+        copy[teamName] = String(next[teamName]?.spocId || '').trim();
+      });
+      return copy;
+    });
   };
 
   const openAdd = () => {

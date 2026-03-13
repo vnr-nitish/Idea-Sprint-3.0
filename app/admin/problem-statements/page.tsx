@@ -36,6 +36,7 @@ export default function AdminProblemStatementsPage() {
   const [outcome, setOutcome] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [statementDomainFilter, setStatementDomainFilter] = useState('All');
 
   // Filters for Teams tab
   const [campusFilter, setCampusFilter] = useState('All');
@@ -382,6 +383,14 @@ export default function AdminProblemStatementsPage() {
   const uniqueSpocs = useMemo(() => Array.from(new Set(Object.values(assignments).map((a: any) => a?.spoc?.name).filter(Boolean))), [assignments]);
   const selectedTeamsCount = useMemo(() => Object.values(selectedTeams).filter(Boolean).length, [selectedTeams]);
 
+  const filteredProblems = useMemo(() => {
+    return problems.filter((problem) => {
+      const problemDomain = normalizeDomain(problem.domain);
+      if (statementDomainFilter !== 'All' && problemDomain !== statementDomainFilter) return false;
+      return true;
+    });
+  }, [problems, statementDomainFilter]);
+
   useEffect(() => {
     if (selectedTeamsCount === 0 && bulkDeadlineInput) {
       setBulkDeadlineInput('');
@@ -670,24 +679,37 @@ export default function AdminProblemStatementsPage() {
         {tab === 'statements' && (
           <div className="space-y-6">
             {/* Create Button */}
-            <div>
+            <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
               <button
                 onClick={openNewProblemModal}
                 className="hh-btn px-6 py-2 text-sm font-semibold"
               >
                 + Create New Problem Statement
               </button>
+              <div className="w-full md:max-w-xs">
+                <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Domain Filter</label>
+                <select
+                  value={statementDomainFilter}
+                  onChange={(e) => setStatementDomainFilter(e.target.value)}
+                  className="hh-input w-full border-2 border-gitam-200"
+                >
+                  <option value="All">All</option>
+                  {DOMAIN_OPTIONS.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* List of Problem Statements */}
             <div className="bg-white rounded-lg shadow-md border-2 border-gitam-300 p-6">
-              <h2 className="text-xl font-bold text-gitam-700 mb-4">All Problem Statements ({problems.length})</h2>
+              <h2 className="text-xl font-bold text-gitam-700 mb-4">All Problem Statements ({filteredProblems.length})</h2>
 
               <div className="space-y-3">
-                {problems.length === 0 ? (
+                {filteredProblems.length === 0 ? (
                   <p className="text-gitam-700/75">No problem statements created yet.</p>
                 ) : (
-                  problems.map((ps) => (
+                  filteredProblems.map((ps) => (
                     <div key={ps.id} className="border-2 border-gitam-200 rounded-lg p-4 hover:border-gitam-300">
                       <div className="flex justify-between items-start gap-4 mb-2">
                         <div className="flex-1">
