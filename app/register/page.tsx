@@ -503,6 +503,20 @@ export default function RegisterPage() {
       supabaseMembers,
     });
 
+    // Ensure every member email has an Auth user with the team password.
+    // This avoids cross-device login issues where only one member can sign in.
+    if (isSupabaseConfigured()) {
+      try {
+        await fetch('/api/auth/bootstrap-team-users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teamPassword: teamData.teamPassword, members }),
+        });
+      } catch {
+        // Non-blocking: registration should still complete even if bootstrap call fails.
+      }
+    }
+
     setEmailStatus('sending');
 
     // Send registration email to all team members (non-blocking for registration).
