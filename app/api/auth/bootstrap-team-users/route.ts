@@ -8,7 +8,7 @@ type MemberInput = {
 const normalizeEmail = (value: string) => String(value || '').trim().toLowerCase();
 
 const findAuthUserIdByEmail = async (
-  admin: ReturnType<typeof createClient>,
+  admin: any,
   email: string
 ): Promise<string | null> => {
   const target = normalizeEmail(email);

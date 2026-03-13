@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { loginWithIdentifierAndPassword } from '@/lib/teamsBackend';
@@ -15,14 +15,12 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string>('');
 
-  const normalizeId = useMemo(() => {
-    return (value: string) => {
-      const trimmed = (value || '').trim();
-      // If user entered a phone-like value, normalize to digits only.
-      const digitsOnly = trimmed.replace(/\D/g, '');
-      if (digitsOnly.length >= 8 && digitsOnly.length <= 15) return digitsOnly;
-      return trimmed.toLowerCase();
-    };
+  const normalizeId = useCallback((value: string) => {
+    const trimmed = (value || '').trim();
+    // If user entered a phone-like value, normalize to digits only.
+    const digitsOnly = trimmed.replace(/\D/g, '');
+    if (digitsOnly.length >= 8 && digitsOnly.length <= 15) return digitsOnly;
+    return trimmed.toLowerCase();
   }, []);
 
   useEffect(() => {
@@ -121,7 +119,7 @@ export default function LoginPage() {
     } catch (e) {
       console.warn(e);
     }
-  }, []);
+  }, [normalizeId]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
