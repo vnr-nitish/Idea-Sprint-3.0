@@ -71,6 +71,7 @@ export default function NOCPage() {
 
   const [tab, setTab] = useState<'individual' | 'team'>('individual');
   const [teamData, setTeamData] = useState<any>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [currentMemberId, setCurrentMemberId] = useState<string | null>(null);
   const [file, setFile] = useState<UploadFile | null>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
@@ -146,6 +147,8 @@ export default function NOCPage() {
       setMemberUploadStatus(nextStatus);
     } catch (error) {
       console.warn(error);
+    } finally {
+      setSessionLoaded(true);
     }
   };
 
@@ -195,6 +198,8 @@ export default function NOCPage() {
       setMemberUploadStatus(nextStatus);
     } catch (error) {
       console.warn(error);
+    } finally {
+      setSessionLoaded(true);
     }
   };
 
@@ -341,6 +346,14 @@ export default function NOCPage() {
       setDeleting(false);
     }
   };
+
+  if (!sessionLoaded) {
+    return (
+      <main className="hh-page flex items-center justify-center">
+        <div className="hh-card p-6">Loading session...</div>
+      </main>
+    );
+  }
 
   if (!teamData) {
     return (

@@ -36,6 +36,7 @@ const formatDisplayDate = (value: string) => {
 export default function ReportingPage() {
   const [teamData, setTeamData] = useState<any>(null);
   const [assignment, setAssignment] = useState<any>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const router = useRouter();
 
   const loadAssignment = async (teamName: string) => {
@@ -68,6 +69,7 @@ export default function ReportingPage() {
         const current = await refreshCurrentTeamSession();
         if (current) setTeamData(current.team);
       } catch (e) { console.warn(e); }
+      finally { setSessionLoaded(true); }
     };
 
     void load();
@@ -88,6 +90,8 @@ export default function ReportingPage() {
       clearInterval(poll);
     };
   }, []);
+
+  if (!sessionLoaded) return <main className="hh-page flex items-center justify-center"> <div className="hh-card p-6">Loading session...</div></main>;
 
   useEffect(() => {
     if (!teamData) return;

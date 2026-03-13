@@ -9,6 +9,7 @@ export default function SpocPage() {
   const router = useRouter();
   const [teamData, setTeamData] = useState<any>(null);
   const [assignment, setAssignment] = useState<any>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
 
   const loadAssignment = async (teamName: string) => {
     try {
@@ -41,6 +42,7 @@ export default function SpocPage() {
       } catch (e) {
         console.warn(e);
       }
+      finally { setSessionLoaded(true); }
     };
 
     void load();
@@ -61,6 +63,14 @@ export default function SpocPage() {
       clearInterval(poll);
     };
   }, []);
+
+  if (!sessionLoaded) {
+    return (
+      <main className="hh-page flex items-center justify-center">
+        <div className="hh-card p-6">Loading session...</div>
+      </main>
+    );
+  }
 
   useEffect(() => {
     if (!teamData?.teamName) return;

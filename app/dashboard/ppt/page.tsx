@@ -9,6 +9,7 @@ import { refreshCurrentTeamSession } from '@/lib/teamSession';
 export default function PPTPage() {
   const MAX_PPT_MB = Math.round(MAX_PPT_BYTES / (1024 * 1024));
   const [teamData, setTeamData] = useState<any>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [file, setFile] = useState<any>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -104,6 +105,7 @@ export default function PPTPage() {
       } catch (e) {
         console.warn(e);
       }
+      finally { setSessionLoaded(true); }
     };
 
     void load();
@@ -307,6 +309,10 @@ export default function PPTPage() {
       setIsLeader(false);
     }
   }, [teamData, currentIdentifier, currentMemberId]);
+
+  if (!sessionLoaded) {
+    return <main className="hh-page flex items-center justify-center"><div className="hh-card p-6">Loading session...</div></main>;
+  }
 
   const removePPT = async () => {
     if (!teamData) return;

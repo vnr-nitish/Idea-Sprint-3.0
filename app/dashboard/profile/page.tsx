@@ -9,6 +9,7 @@ import { refreshCurrentTeamSession } from '@/lib/teamSession';
 export default function ProfilePage() {
   const [teamData, setTeamData] = useState<any>(null);
   const [teamDraft, setTeamDraft] = useState<any>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const [identifier, setIdentifier] = useState<string>("");
   const router = useRouter();
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -39,6 +40,7 @@ export default function ProfilePage() {
       } catch (e) {
         console.warn(e);
       }
+      finally { setSessionLoaded(true); }
     };
 
     void load();
@@ -59,6 +61,13 @@ export default function ProfilePage() {
       clearInterval(poll);
     };
   }, []);
+
+  if (!sessionLoaded)
+    return (
+      <main className="hh-page flex items-center justify-center">
+        <div className="hh-card p-6">Loading session...</div>
+      </main>
+    );
 
   const getLeadIndex = (): number => {
     const members = Array.isArray(teamDraft?.members) ? teamDraft.members : [];

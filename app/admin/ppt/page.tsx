@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
+import { listTeamProblemSelections } from '@/lib/problemBackend';
 import {
   deletePpt as deletePptBackend,
   getPpt as getPptBackend,
@@ -18,6 +19,7 @@ import {
 export default function AdminPPTPage() {
   const router = useRouter();
   const [registered, setRegistered] = useState<any[]>([]);
+  const [teamSelections, setTeamSelections] = useState<Record<string, string>>({});
   const [campusFilter, setCampusFilter] = useState('All');
   const [domainFilter, setDomainFilter] = useState('All');
   const [teamSizeFilter, setTeamSizeFilter] = useState('All');
@@ -65,6 +67,10 @@ export default function AdminPPTPage() {
   };
 
   const getTeamSelectedCode = (team: any): string => {
+    const teamName = String(team?.teamName || '').trim();
+    if (Object.prototype.hasOwnProperty.call(teamSelections || {}, teamName)) {
+      return String(teamSelections?.[teamName] || '').trim() || '-';
+    }
     return String(team?.selectedProblemStatement || team?.selectedProblem || '').trim() || '-';
   };
 
@@ -105,10 +111,16 @@ export default function AdminPPTPage() {
     (async () => {
       try {
         if (isSupabaseConfigured()) {
-          const rows = await listTeamsWithMembers();
+          const [rows, selections] = await Promise.all([
+            listTeamsWithMembers(),
+            listTeamProblemSelections(),
+          ]);
           if (rows) {
             setRegistered(rows);
             await refreshBackendUploads(rows);
+            if (selections && typeof selections === 'object') {
+              setTeamSelections(selections);
+            }
             return;
           }
         }
@@ -118,8 +130,16 @@ export default function AdminPPTPage() {
       try {
         const r = JSON.parse(localStorage.getItem('registeredTeams') || '[]');
         setRegistered(r);
+        const fallbackSelections: Record<string, string> = {};
+        (Array.isArray(r) ? r : []).forEach((t: any) => {
+          const teamName = String(t?.teamName || '').trim();
+          if (!teamName) return;
+          fallbackSelections[teamName] = String(t?.selectedProblemStatement || t?.selectedProblem || '').trim();
+        });
+        setTeamSelections(fallbackSelections);
       } catch {
         setRegistered([]);
+        setTeamSelections({});
       }
     })();
   };

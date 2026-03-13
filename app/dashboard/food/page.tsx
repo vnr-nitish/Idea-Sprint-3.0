@@ -8,6 +8,7 @@ import { refreshCurrentTeamSession } from '@/lib/teamSession';
 export default function FoodPage() {
   const [teamData, setTeamData] = useState<any>(null);
   const [coupons, setCoupons] = useState<any[]>([]);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -16,6 +17,7 @@ export default function FoodPage() {
         const current = await refreshCurrentTeamSession();
         if (current) setTeamData(current.team);
       } catch (e) { console.warn(e); }
+      finally { setSessionLoaded(true); }
     };
 
     void load();
@@ -64,6 +66,14 @@ export default function FoodPage() {
     }, 2500);
     return () => { window.removeEventListener('storage', onStorage); clearInterval(poll); };
   }, [teamData]);
+
+  if (!sessionLoaded) {
+    return (
+      <main className="hh-page flex items-center justify-center">
+        <div className="hh-card p-6">Loading session...</div>
+      </main>
+    );
+  }
 
   if (!teamData) return (
     <main className="hh-page flex items-center justify-center">
