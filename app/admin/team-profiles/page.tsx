@@ -1204,8 +1204,8 @@ export default function TeamProfilesPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 h-[70vh] min-h-0 overflow-hidden">
-              <div className="md:col-span-1 min-h-0 flex flex-col">
-                <div className="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1">
+              <div className="md:col-span-1 min-h-0 flex flex-col overflow-hidden border border-gitam-100 rounded-xl bg-white">
+                <div className="space-y-3 flex-1 min-h-0 overflow-y-auto p-3 pr-2">
                   {(teamDraft.members || []).map((m:any, idx:number) => (
                     (() => {
                       const teamName = String(teamDraft.teamName || '').trim();
@@ -1241,21 +1241,22 @@ export default function TeamProfilesPage() {
                   {(!teamDraft.members || teamDraft.members.length === 0) && (
                     <div className="text-sm text-gitam-700/75">No members found for this team.</div>
                   )}
-                  
                 </div>
 
-                <button
-                  onClick={addMemberToTeam}
-                  disabled={(teamDraft.members || []).length >= 4}
-                  className={`w-full mt-3 p-3 border-2 border-dashed rounded-lg font-semibold transition ${
-                    (teamDraft.members || []).length >= 4 
-                      ? 'border-gray-300 text-gray-400 cursor-not-allowed' 
-                      : 'border-gitam-400 text-gitam-700 hover:bg-gitam-50 hover:border-gitam-600'
-                  }`}
-                  title={(teamDraft.members || []).length >= 4 ? 'Maximum 4 members allowed' : 'Add a new member to this team'}
-                >
-                  + Add Member {(teamDraft.members || []).length >= 4 && '(Max 4)'}
-                </button>
+                <div className="border-t border-gitam-100 p-3 bg-white">
+                  <button
+                    onClick={addMemberToTeam}
+                    disabled={(teamDraft.members || []).length >= 4}
+                    className={`w-full p-3 border-2 border-dashed rounded-lg font-semibold transition ${
+                      (teamDraft.members || []).length >= 4
+                        ? 'border-gray-300 text-gray-400 cursor-not-allowed'
+                        : 'border-gitam-400 text-gitam-700 hover:bg-gitam-50 hover:border-gitam-600'
+                    }`}
+                    title={(teamDraft.members || []).length >= 4 ? 'Maximum 4 members allowed' : 'Add a new member to this team'}
+                  >
+                    + Add Member {(teamDraft.members || []).length >= 4 && '(Max 4)'}
+                  </button>
+                </div>
               </div>
 
               <div className="md:col-span-2 min-h-0 overflow-y-auto pr-1">
