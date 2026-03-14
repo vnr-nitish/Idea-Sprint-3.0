@@ -1148,7 +1148,7 @@ export default function TeamProfilesPage() {
       {/* Team editor modal (like Food Coupons) */}
       {teamDraft && editingTeamIndex !== null && (
         <div className="fixed inset-0 bg-black/45 backdrop-blur-[2px] flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl border-2 border-gitam-300 p-5 md:p-6 max-h-[92vh] overflow-hidden">
+          <div className="w-full max-w-6xl bg-white rounded-2xl shadow-2xl border-2 border-gitam-300 p-5 md:p-6 max-h-[92vh] overflow-hidden flex flex-col">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
               <div>
                 <h3 className="font-semibold text-lg">{teamDraft.teamName || 'Team'}</h3>
@@ -1203,7 +1203,7 @@ export default function TeamProfilesPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 h-[70vh] min-h-0 overflow-hidden">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1 min-h-0 overflow-hidden">
               <div className="md:col-span-1 min-h-0 flex flex-col overflow-hidden border border-gitam-100 rounded-xl bg-white">
                 <div className="space-y-3 flex-1 min-h-0 overflow-y-auto p-3 pr-2">
                   {(teamDraft.members || []).map((m:any, idx:number) => (
@@ -1243,7 +1243,7 @@ export default function TeamProfilesPage() {
                   )}
                 </div>
 
-                <div className="border-t border-gitam-100 p-3 bg-white">
+                <div className="border-t border-gitam-100 p-3 bg-white shrink-0">
                   <button
                     onClick={addMemberToTeam}
                     disabled={(teamDraft.members || []).length >= 4}
@@ -1259,9 +1259,9 @@ export default function TeamProfilesPage() {
                 </div>
               </div>
 
-              <div className="md:col-span-2 min-h-0 overflow-y-auto pr-1">
+              <div className="md:col-span-2 min-h-0 overflow-hidden">
                 {Array.isArray(teamDraft.members) && teamDraft.members[selectedMemberIndex] ? (
-                  <div className="p-4 border border-gitam-100 rounded-2xl bg-antique-50">
+                  <div className="p-4 border border-gitam-100 rounded-2xl bg-antique-50 h-full min-h-0 flex flex-col">
                     <div className="flex items-center justify-between gap-2 mb-3">
                       <div>
                         <div className="font-semibold">Edit Member {selectedMemberIndex + 1}</div>
@@ -1284,7 +1284,7 @@ export default function TeamProfilesPage() {
                       </div>
                     </div>
 
-                    <div className="min-h-0 overflow-y-auto max-h-[calc(70vh-180px)]">
+                    <div className="min-h-0 flex-1 overflow-y-auto pr-1">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                           <label className="text-sm text-gitam-700">Campus</label>
