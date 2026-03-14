@@ -303,6 +303,10 @@ export default function AdminDashboard() {
             <div className="w-14 h-14 rounded-full border-2 border-antique/80 bg-gitam-600 text-antique flex items-center justify-center text-2xl">🧑‍💼</div>
             <div className="text-sm font-semibold text-gitam-700">SPOC</div>
           </button>
+          <button onClick={() => router.push('/admin/id-cards-certificates')} className="hh-card p-6 rounded-2xl border-2 border-gitam-200 flex flex-col items-center gap-3 hover:shadow-lg hover:border-gitam-400 transition">
+            <div className="w-14 h-14 rounded-full border-2 border-antique/80 bg-gitam-500 text-antique flex items-center justify-center text-2xl">🪪</div>
+            <div className="text-sm font-semibold text-gitam-700">ID Card &amp; Certificates</div>
+          </button>
           <button onClick={() => router.push('/admin/others')} className="hh-card p-6 rounded-2xl border-2 border-gitam-200 flex flex-col items-center gap-3 hover:shadow-lg hover:border-gitam-400 transition">
             <div className="w-14 h-14 rounded-full border-2 border-antique/80 bg-gitam-700 text-antique flex items-center justify-center text-2xl">🔗</div>
             <div className="text-sm font-semibold text-gitam-700">Others</div>

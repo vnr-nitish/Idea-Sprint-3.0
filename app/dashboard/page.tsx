@@ -268,7 +268,7 @@ export default function DashboardPage() {
           <div className="mt-2 text-lg text-gitam-700">Welcome, <span className="font-semibold text-gitam-700">{participantName}</span></div>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
           <button onClick={() => { setActive('profile'); router.push('/dashboard/profile'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='profile' ? 'ring-4 ring-gitam/20' : ''}`}>
             <div className="w-14 h-14 rounded-full border-2 border-gitam-600 bg-antique flex items-center justify-center text-2xl shadow-sm">👥</div>
             <div className="mt-3 text-gitam-700">Team Profile</div>
@@ -302,6 +302,11 @@ export default function DashboardPage() {
           <button onClick={() => { setActive('spoc'); router.push('/dashboard/spoc'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='spoc' ? 'ring-4 ring-gitam/20' : ''}`}>
             <div className="w-14 h-14 rounded-full border-2 border-gitam-600 bg-antique flex items-center justify-center text-2xl shadow-sm">🧑‍💼</div>
             <div className="mt-3 text-gitam-700">SPOC</div>
+          </button>
+
+          <button onClick={() => { setActive('idCardsCertificates'); router.push('/dashboard/id-cards-certificates'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='idCardsCertificates' ? 'ring-4 ring-gitam/20' : ''}`}>
+            <div className="w-14 h-14 rounded-full border-2 border-gitam-600 bg-antique flex items-center justify-center text-2xl shadow-sm">🪪</div>
+            <div className="mt-3 text-gitam-700">ID Card &amp; Certificates</div>
           </button>
 
           <button onClick={() => { setActive('others'); router.push('/dashboard/others'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='others' ? 'ring-4 ring-gitam/20' : ''}`}>
