@@ -490,7 +490,18 @@ export default function TeamProfilesPage() {
 
   const uniqueCampuses = Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.campus)).filter(Boolean)));
   const uniquePrograms = Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.program)).filter(Boolean)));
-  const uniqueSchools = Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.school)).filter(Boolean)));
+  const individualRows = registered.flatMap((t:any)=>(t.members||[]).map((m:any,idx:number)=>(
+    {
+      ...m,
+      teamName:t.teamName,
+      domain:t.domain,
+      venue:getVenueForTeam(t),
+      spoc:getSpocForTeam(t.teamName),
+      teamSize:(t.members||[]).length,
+      memberIndex: idx,
+      memberKey: m.email || m.registrationNumber || idx,
+    }
+  )));
   const uniqueDomains = DOMAIN_OPTIONS;
   const uniqueTeamSizes = [3, 4];
   const uniqueVenues = Array.from(new Set(registered.map((t:any)=>getVenueForTeam(t)).filter(Boolean)));
@@ -526,12 +537,11 @@ export default function TeamProfilesPage() {
     return true;
   });
 
-  const filteredIndividuals = registered.flatMap((t:any)=>(t.members||[]).map((m:any,idx:number)=>({...m, teamName:t.teamName, domain:t.domain, venue:getVenueForTeam(t), spoc:getSpocForTeam(t.teamName), teamSize:(t.members||[]).length, memberIndex: idx, memberKey: m.email || m.registrationNumber || idx}))).filter((m:any)=>{
+  const filteredIndividualsBase = individualRows.filter((m:any)=>{
     if (campusFilter!=='All' && m.campus!==campusFilter) return false;
     if (domainFilter!=='All' && normalizeDomain(m.domain)!==domainFilter) return false;
     if (teamSizeFilter!=='All' && Number(m.teamSize || 0)!==parseInt(teamSizeFilter, 10)) return false;
     if (yearFilter!=='All' && m.yearOfStudy!==yearFilter) return false;
-    if (schoolFilter!=='All' && m.school!==schoolFilter) return false;
     if (stayFilter!=='All' && m.stay!==stayFilter) return false;
     if (venueFilter!=='All' && (m.venue || '')!==venueFilter) return false;
     if (spocFilter!=='All' && (m.spoc || '')!==spocFilter) return false;
@@ -552,6 +562,25 @@ export default function TeamProfilesPage() {
     }
     return true;
   });
+
+  const uniqueSchools = Array.from(
+    new Set(
+      filteredIndividualsBase
+        .map((m:any) => String(m.school || '').trim())
+        .filter(Boolean)
+    )
+  );
+
+  const filteredIndividuals = filteredIndividualsBase.filter((m:any) => {
+    if (schoolFilter !== 'All' && String(m.school || '').trim() !== schoolFilter) return false;
+    return true;
+  });
+
+  useEffect(() => {
+    if (schoolFilter !== 'All' && !uniqueSchools.includes(schoolFilter)) {
+      setSchoolFilter('All');
+    }
+  }, [schoolFilter, uniqueSchools]);
 
   const exportCSV = (rows:any[]) => {
     const cols = ['teamName','domain','venue','spoc','teamPassword','memberIndex','memberName','registrationNumber','email','phoneNumber','school','program','programOther','branch','campus','yearOfStudy','stay'];
