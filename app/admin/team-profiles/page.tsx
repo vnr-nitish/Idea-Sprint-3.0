@@ -17,7 +17,7 @@ export default function TeamProfilesPage() {
   const [teamSizeFilter, setTeamSizeFilter] = useState('All');
   const [teamFilter, setTeamFilter] = useState('All');
   const [programFilter, setProgramFilter] = useState('All');
-  const [branchFilter, setBranchFilter] = useState('All');
+  const [schoolFilter, setSchoolFilter] = useState('All');
   const [stayFilter, setStayFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTab, setSelectedTab] = useState<'teams'|'individuals'>('teams');
@@ -490,7 +490,7 @@ export default function TeamProfilesPage() {
 
   const uniqueCampuses = Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.campus)).filter(Boolean)));
   const uniquePrograms = Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.program)).filter(Boolean)));
-  const uniqueBranches = Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.branch)).filter(Boolean)));
+  const uniqueSchools = Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.school)).filter(Boolean)));
   const uniqueDomains = DOMAIN_OPTIONS;
   const uniqueTeamSizes = [3, 4];
   const uniqueVenues = Array.from(new Set(registered.map((t:any)=>getVenueForTeam(t)).filter(Boolean)));
@@ -531,7 +531,7 @@ export default function TeamProfilesPage() {
     if (domainFilter!=='All' && normalizeDomain(m.domain)!==domainFilter) return false;
     if (teamSizeFilter!=='All' && Number(m.teamSize || 0)!==parseInt(teamSizeFilter, 10)) return false;
     if (yearFilter!=='All' && m.yearOfStudy!==yearFilter) return false;
-    if (branchFilter!=='All' && m.branch!==branchFilter) return false;
+    if (schoolFilter!=='All' && m.school!==schoolFilter) return false;
     if (stayFilter!=='All' && m.stay!==stayFilter) return false;
     if (venueFilter!=='All' && (m.venue || '')!==venueFilter) return false;
     if (spocFilter!=='All' && (m.spoc || '')!==spocFilter) return false;
@@ -546,7 +546,8 @@ export default function TeamProfilesPage() {
         !(m.email||'').toLowerCase().includes(q) &&
         !(m.registrationNumber||'').toLowerCase().includes(q) &&
         !(m.teamName||'').toLowerCase().includes(q) &&
-        !(m.phoneNumber||'').toLowerCase().includes(q)
+        !(m.phoneNumber||'').toLowerCase().includes(q) &&
+        !(m.branch||'').toLowerCase().includes(q)
       ) return false;
     }
     return true;
@@ -985,10 +986,10 @@ export default function TeamProfilesPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Branch</label>
-                  <select value={branchFilter} onChange={(e)=>setBranchFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <label className="block text-xs font-semibold text-gitam-700 mb-1.5">School</label>
+                  <select value={schoolFilter} onChange={(e)=>setSchoolFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueBranches.map((b:any)=>(<option key={b}>{b}</option>))}
+                    {uniqueSchools.map((s:any)=>(<option key={s}>{s}</option>))}
                   </select>
                 </div>
                 <div>
@@ -1026,7 +1027,7 @@ export default function TeamProfilesPage() {
                   <input 
                     value={searchQuery} 
                     onChange={(e)=>setSearchQuery(e.target.value)} 
-                    placeholder="Name, Reg no, Phone, Email" 
+                    placeholder="Name, Reg no, Phone, Email, Branch" 
                     className="hh-input w-full border-2 border-gitam-200 text-sm" 
                   />
                 </div>
