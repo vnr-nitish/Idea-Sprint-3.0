@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
-import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, syncTeamMembers, updateMember, updateTeam } from '@/lib/teamsBackend';
+import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, syncTeamMembers, updateTeam } from '@/lib/teamsBackend';
 import { deleteAllNocForTeam } from '@/lib/nocBackend';
 import { deleteAllPptForTeam } from '@/lib/pptBackend';
 import { listReportingAssignments } from '@/lib/reportingBackend';
@@ -270,14 +270,52 @@ export default function TeamProfilesPage() {
     }
   };
 
+  const validateMemberRequired = (member: any): string[] => {
+    const m = member || {};
+    const missing: string[] = [];
+    if (!String(m.name || '').trim()) missing.push('Full Name');
+    if (!String(m.registrationNumber || '').trim()) missing.push('Registration Number');
+    if (!String(m.email || '').trim()) missing.push('GITAM Mail');
+    if (!String(m.phoneNumber || '').trim()) missing.push('Phone Number');
+    if (!String(m.school || '').trim()) missing.push('School');
+    if (!String(m.program || '').trim()) missing.push('Program');
+    if (String(m.program || '').trim() === 'Others' && !String(m.programOther || '').trim()) missing.push('Program (Other)');
+    if (!String(m.branch || '').trim()) missing.push('Branch');
+    if (!String(m.campus || '').trim()) missing.push('Campus');
+    if (!String(m.yearOfStudy || '').trim()) missing.push('Year of Study');
+    if (!String(m.stay || '').trim()) missing.push('Stay Type');
+    return missing;
+  };
+
   const saveMember = async (memberIdx:number) => {
     if (editingTeamIndex === null || !teamDraft) return;
-    if (isSupabaseConfigured() && teamDraft.teamId && teamDraft.members?.[memberIdx]?.id) {
+    const members = Array.isArray(teamDraft.members) ? teamDraft.members : [];
+    const missing = validateMemberRequired(members[memberIdx]);
+    if (missing.length > 0) {
+      alert(`Please fill all mandatory fields before saving. Missing: ${missing.join(', ')}`);
+      return;
+    }
+
+    if (isSupabaseConfigured() && teamDraft.teamId) {
       try {
-        await updateMember(String(teamDraft.members[memberIdx].id), teamDraft.members[memberIdx]);
         if (teamDraft.domain !== undefined) {
           await updateTeam(String(teamDraft.teamId), { domain: teamDraft.domain, teamName: teamDraft.teamName });
         }
+        await syncTeamMembers(String(teamDraft.teamId), members);
+
+        const teamPassword = String(teamDraft.teamPassword || registered[editingTeamIndex]?.teamPassword || '').trim();
+        if (teamPassword) {
+          try {
+            await fetch('/api/auth/bootstrap-team-users', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ teamId: String(teamDraft.teamId), teamPassword }),
+            });
+          } catch {
+            // non-blocking
+          }
+        }
+
         await reloadRegistered();
         alert('Saved');
         return;
@@ -299,6 +337,16 @@ export default function TeamProfilesPage() {
 
   const saveAllMembers = async () => {
     if (editingTeamIndex === null || !teamDraft) return;
+
+    const members = Array.isArray(teamDraft.members) ? teamDraft.members : [];
+    for (let i = 0; i < members.length; i += 1) {
+      const missing = validateMemberRequired(members[i]);
+      if (missing.length > 0) {
+        alert(`Member ${i + 1} is incomplete. Missing: ${missing.join(', ')}`);
+        return;
+      }
+    }
+
     if (isSupabaseConfigured() && teamDraft.teamId) {
       try {
         const oldTeamName = String(registered[editingTeamIndex]?.teamName || '').trim();
@@ -323,7 +371,6 @@ export default function TeamProfilesPage() {
             }
           } catch {}
         }
-        const members = Array.isArray(teamDraft.members) ? teamDraft.members : [];
         await syncTeamMembers(String(teamDraft.teamId), members);
 
         // Best effort: update/create auth users for all current member emails so login works for new members too.
