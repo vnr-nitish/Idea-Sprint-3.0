@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
-import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, updateMember, updateTeam } from '@/lib/teamsBackend';
+import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, syncTeamMembers, updateMember, updateTeam } from '@/lib/teamsBackend';
 import { deleteAllNocForTeam } from '@/lib/nocBackend';
 import { deleteAllPptForTeam } from '@/lib/pptBackend';
 import { listReportingAssignments } from '@/lib/reportingBackend';
@@ -324,11 +324,22 @@ export default function TeamProfilesPage() {
           } catch {}
         }
         const members = Array.isArray(teamDraft.members) ? teamDraft.members : [];
-        await Promise.all(
-          members
-            .filter((m:any) => m?.id)
-            .map((m:any) => updateMember(String(m.id), m))
-        );
+        await syncTeamMembers(String(teamDraft.teamId), members);
+
+        // Best effort: update/create auth users for all current member emails so login works for new members too.
+        const teamPassword = String(teamDraft.teamPassword || registered[editingTeamIndex]?.teamPassword || '').trim();
+        if (teamPassword) {
+          try {
+            await fetch('/api/auth/bootstrap-team-users', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ teamId: String(teamDraft.teamId), teamPassword }),
+            });
+          } catch {
+            // non-blocking
+          }
+        }
+
         await reloadRegistered();
         closeTeamEditor();
         alert('Saved');

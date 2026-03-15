@@ -236,6 +236,64 @@ export const deleteTeamAndMembers = async (teamId: string): Promise<void> => {
   if (delTeam.error) throw delTeam.error;
 };
 
+export const syncTeamMembers = async (teamId: string, members: TeamMemberRecord[]): Promise<void> => {
+  if (!isSupabaseConfigured()) return;
+  const supabase = getSupabaseClient();
+  if (!supabase) return;
+
+  const normalizedMembers = Array.isArray(members) ? members : [];
+
+  const { data: existingRows, error: existingErr } = await supabase
+    .from('members')
+    .select('id')
+    .eq('team_id', teamId);
+  if (existingErr) throw existingErr;
+
+  const existingIds = new Set((existingRows || []).map((r: any) => String(r.id)));
+  const incomingIds = new Set(
+    normalizedMembers
+      .map((m: any) => String(m?.id || '').trim())
+      .filter(Boolean)
+  );
+
+  const idsToDelete = Array.from(existingIds).filter((id) => !incomingIds.has(id));
+  if (idsToDelete.length > 0) {
+    const { error: delErr } = await supabase.from('members').delete().in('id', idsToDelete);
+    if (delErr) throw delErr;
+  }
+
+  for (let idx = 0; idx < normalizedMembers.length; idx += 1) {
+    const m: any = normalizedMembers[idx] || {};
+    const row = {
+      team_id: teamId,
+      member_index: idx + 1,
+      name: String(m.name || ''),
+      registration_number: String(m.registrationNumber || ''),
+      registration_number_normalized: normalizeReg(String(m.registrationNumber || '')),
+      email: String(m.email || ''),
+      email_normalized: normalizeEmail(String(m.email || '')),
+      phone_number: String(m.phoneNumber || ''),
+      phone_number_normalized: normalizePhone(String(m.phoneNumber || '')),
+      school: String(m.school || ''),
+      program: String(m.program || ''),
+      program_other: String(m.programOther || ''),
+      branch: String(m.branch || ''),
+      campus: String(m.campus || ''),
+      stay: String(m.stay || ''),
+      year_of_study: String(m.yearOfStudy || ''),
+    };
+
+    const memberId = String(m.id || '').trim();
+    if (memberId) {
+      const { error: upErr } = await supabase.from('members').update(row).eq('id', memberId);
+      if (upErr) throw upErr;
+    } else {
+      const { error: insErr } = await supabase.from('members').insert(row);
+      if (insErr) throw insErr;
+    }
+  }
+};
+
 export const loginWithIdentifierAndPassword = async (identifierInput: string, password: string): Promise<{ team: TeamRecord; identifierNormalized: string; memberId: string; teamId: string } | null> => {
   if (!isSupabaseConfigured()) return null;
   const supabase = getSupabaseClient();
