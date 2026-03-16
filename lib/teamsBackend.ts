@@ -151,6 +151,60 @@ export const registerTeamWithMembers = async (team: { teamName: string; domain: 
     throw new Error('All member fields are required');
   }
 
+  // Preferred path: single atomic RPC transaction in the database.
+  // If RPC is unavailable (not deployed yet), fall back to legacy two-step flow below.
+  const requestId =
+    typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function'
+      ? (crypto as any).randomUUID()
+      : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+  const rpcAttempt = await supabase.rpc('register_team_atomic', {
+    p_team_name: String(team.teamName || '').trim(),
+    p_domain: String(team.domain || '').trim(),
+    p_members: normalizedMembers,
+    p_request_id: requestId,
+  });
+
+  if (!rpcAttempt.error && rpcAttempt.data) {
+    const result = rpcAttempt.data as any;
+    if (!result?.ok) {
+      throw new Error(String(result?.reason || 'Registration failed'));
+    }
+
+    const teamId = String(result?.teamId || '').trim();
+    if (!teamId) {
+      throw new Error('Atomic registration did not return team id');
+    }
+
+    // Try to return fresh member ids/emails; if query is blocked by RLS, return best-effort email list.
+    try {
+      const { data: memberRows } = await supabase
+        .from('members')
+        .select('id, email')
+        .eq('team_id', teamId)
+        .order('member_index', { ascending: true });
+
+      if (Array.isArray(memberRows) && memberRows.length) {
+        return {
+          teamId,
+          members: memberRows.map((r: any) => ({ id: String(r.id || ''), email: String(r.email || '') })),
+        };
+      }
+    } catch {
+      // ignore member select failures
+    }
+
+    return {
+      teamId,
+      members: normalizedMembers.map((m) => ({ id: '', email: String(m.email || '') })),
+    };
+  }
+
+  const rpcMissing = String(rpcAttempt.error?.message || '').toLowerCase().includes('register_team_atomic');
+  if (!rpcMissing && rpcAttempt.error) {
+    throw rpcAttempt.error;
+  }
+
   const { data: teamRow, error: teamErr } = await supabase
     .from('teams')
     .insert({
