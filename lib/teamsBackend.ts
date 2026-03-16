@@ -127,6 +127,30 @@ export const registerTeamWithMembers = async (team: { teamName: string; domain: 
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
+  const normalizedMembers = Array.isArray(members) ? members : [];
+  if (normalizedMembers.length < 3 || normalizedMembers.length > 4) {
+    throw new Error('Team must have 3 or 4 members');
+  }
+
+  const hasInvalidMember = normalizedMembers.some((m) => {
+    const member = m || ({} as TeamMemberRecord);
+    return !String(member.name || '').trim() ||
+      !String(member.registrationNumber || '').trim() ||
+      !String(member.email || '').trim() ||
+      !String(member.phoneNumber || '').trim() ||
+      !String(member.school || '').trim() ||
+      !String(member.program || '').trim() ||
+      !String(member.branch || '').trim() ||
+      !String(member.campus || '').trim() ||
+      !String(member.stay || '').trim() ||
+      !String(member.yearOfStudy || '').trim() ||
+      (String(member.program || '').trim() === 'Others' && !String(member.programOther || '').trim());
+  });
+
+  if (hasInvalidMember) {
+    throw new Error('All member fields are required');
+  }
+
   const { data: teamRow, error: teamErr } = await supabase
     .from('teams')
     .insert({
@@ -138,7 +162,7 @@ export const registerTeamWithMembers = async (team: { teamName: string; domain: 
 
   if (teamErr || !teamRow?.id) throw teamErr || new Error('Could not create team');
 
-  const payload = (members || []).map((m, idx) => ({
+  const payload = normalizedMembers.map((m, idx) => ({
     team_id: teamRow.id,
     member_index: idx + 1,
     name: m.name,
@@ -162,7 +186,15 @@ export const registerTeamWithMembers = async (team: { teamName: string; domain: 
     .insert(payload)
     .select('id, email');
 
-  if (memErr || !memberRows) throw memErr || new Error('Could not create members');
+  if (memErr || !memberRows) {
+    // Roll back parent team to avoid orphan rows (team with no members) in admin views.
+    try {
+      await supabase.from('teams').delete().eq('id', teamRow.id);
+    } catch {
+      // ignore rollback failures; original error is more important
+    }
+    throw memErr || new Error('Could not create members');
+  }
 
   return {
     teamId: teamRow.id,
