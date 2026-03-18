@@ -18,6 +18,7 @@ export default function TeamProfilesPage() {
   const [teamFilter, setTeamFilter] = useState('All');
   const [programFilter, setProgramFilter] = useState('All');
   const [schoolFilter, setSchoolFilter] = useState('All');
+  const [positionFilter, setPositionFilter] = useState('All');
   const [stayFilter, setStayFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTab, setSelectedTab] = useState<'teams'|'individuals'>('teams');
@@ -549,7 +550,11 @@ export default function TeamProfilesPage() {
   const uniqueCampuses = Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.campus)).filter(Boolean)));
   const uniquePrograms = Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.program)).filter(Boolean)));
   const individualRows = registered.flatMap((t:any)=>(t.members||[]).map((m:any,idx:number)=>(
-    {
+    (() => {
+      const leadMember = getLeadMember(t);
+      const leadIdentity = leadMember ? getMemberIdentity(leadMember, 0) : '';
+      const currentIdentity = getMemberIdentity(m, idx);
+      return {
       ...m,
       teamName:t.teamName,
       domain:t.domain,
@@ -558,7 +563,9 @@ export default function TeamProfilesPage() {
       teamSize:(t.members||[]).length,
       memberIndex: idx,
       memberKey: m.email || m.registrationNumber || idx,
-    }
+      position: leadIdentity && currentIdentity === leadIdentity ? 'Lead' : 'Member',
+    };
+    })()
   )));
   const uniqueDomains = DOMAIN_OPTIONS;
   const uniqueTeamSizes = [3, 4];
@@ -600,6 +607,7 @@ export default function TeamProfilesPage() {
     if (domainFilter!=='All' && normalizeDomain(m.domain)!==domainFilter) return false;
     if (teamSizeFilter!=='All' && Number(m.teamSize || 0)!==parseInt(teamSizeFilter, 10)) return false;
     if (yearFilter!=='All' && m.yearOfStudy!==yearFilter) return false;
+    if (positionFilter!=='All' && String(m.position || 'Member')!==positionFilter) return false;
     if (stayFilter!=='All' && m.stay!==stayFilter) return false;
     if (venueFilter!=='All' && (m.venue || '')!==venueFilter) return false;
     if (spocFilter!=='All' && (m.spoc || '')!==spocFilter) return false;
@@ -971,6 +979,7 @@ export default function TeamProfilesPage() {
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Domain</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Team Name</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Team Lead</th>
+                    <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Lead Phone</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Size</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Venue</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">SPOC</th>
@@ -991,6 +1000,7 @@ export default function TeamProfilesPage() {
                         <div className="font-semibold text-gitam-700">{t.teamName}</div>
                       </td>
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{getLeadMember(t)?.name || '-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{getLeadMember(t)?.phoneNumber || '-'}</td>
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{(t.members||[]).length}</td>
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{getVenueForTeam(t)||'-'}</td>
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{getSpocForTeam(t.teamName)}</td>
@@ -1039,7 +1049,7 @@ export default function TeamProfilesPage() {
           <div className="bg-white rounded-lg shadow-md border-2 border-gitam-300 p-6">
             {/* Filters - NO scrolling, clean grid layout */}
             <div className="mb-6 pb-6 border-b-2 border-gitam-300">
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-9 gap-3 mb-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-10 gap-3 mb-4">
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Campus</label>
                   <select value={campusFilter} onChange={(e)=>setCampusFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
@@ -1109,6 +1119,14 @@ export default function TeamProfilesPage() {
                     <option>Absent</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Position</label>
+                  <select value={positionFilter} onChange={(e)=>setPositionFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                    <option>All</option>
+                    <option>Lead</option>
+                    <option>Member</option>
+                  </select>
+                </div>
                 <div className="max-w-[190px]">
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Search</label>
                   <input 
@@ -1145,6 +1163,7 @@ export default function TeamProfilesPage() {
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Team Name</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Team Size</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Name</th>
+                    <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Position</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Email</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Reg No</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Phone No</th>
@@ -1170,6 +1189,7 @@ export default function TeamProfilesPage() {
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.teamName||'-'}</td>
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.teamSize||'-'}</td>
                       <td className="p-3 font-medium text-gitam-700 border-r border-gitam-100">{m.name||'-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.position||'Member'}</td>
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.email||'-'}</td>
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.registrationNumber||'-'}</td>
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.phoneNumber||'-'}</td>
