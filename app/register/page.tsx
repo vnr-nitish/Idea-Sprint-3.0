@@ -696,8 +696,8 @@ export default function RegisterPage() {
               <ol className="list-decimal pl-5 space-y-3 text-gitam-700">
                 <li>Each team must consist of 3 to 4 members only.</li>
                 <li>Registrations are on a first come, first serve basis, and only 70 teams will be allowed.</li>
-                <li>Participants may take a day break if they choose to. Teams are allowed to leave the venue at 08:00 PM on 26th March and return by 08:00 AM on 26th March to continue the hackathon.</li>
-                <li>Breakfast will not be provided on the morning of 26th March. However, dinner on 26th March and lunch on 26th March will be provided to all participants.</li>
+                <li>Participants may take a day break if they choose to. Teams are allowed to leave the venue at 08:00 PM on 26th March and return by 08:00 AM on 27th March to continue the hackathon.</li>
+                <li>Breakfast will not be provided on the morning of 27th March. However, dinner on 26th March and lunch on 27th March will be provided to all participants.</li>
                 <li>Submission of a No Objection Certificate (NOC) is mandatory for all participants.</li>
                 <li>Problem statements will be revealed on the spot, i.e. 26th March at 04:30 PM, shortly after the hackathon begins.</li>
               </ol>
