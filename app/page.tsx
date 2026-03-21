@@ -23,15 +23,15 @@ export default function Home() {
     { q: "Is there any registration fee?", a: "No, registration is completely free for all students." },
     { q: "Will certificates be provided?", a: "Yes, all participants will receive participation certificates." },
     { q: "Is accommodation provided?", a: "No. Accommodation is not provided. This is a 24-hour hackathon and participants are expected to manage accordingly." },
-    { q: "Will food be provided?", a: "Yes. Dinner will be provided on 26th March and lunch will be provided on 26th March. Breakfast on 26th March must be arranged by participants." },
+    { q: "Will food be provided?", a: "Yes. Dinner will be provided on 26th March and lunch will be provided on 27th March. Breakfast on 27th March must be arranged by participants." },
     { q: "How do I register?", a: "Go to the Register page (/register) and submit your team details." },
   ];
 
   const importantInstructions = [
     "Each team must consist of 3 to 4 members only.",
     "Registrations are on a first come, first serve basis, and only 70 teams will be allowed.",
-    "Participants may take a day break if they choose to. Teams are allowed to leave the venue at 8:00 PM on 26th March and return by 8:00 AM on 26th March to continue the hackathon.",
-    "Breakfast will not be provided on the morning of 26th March. However, dinner on 26th March and lunch on 26th March will be provided to all participants.",
+    "Participants may take a day break if they choose to. Teams are allowed to leave the venue at 8:00 PM on 26th March and return by 8:00 AM on 27th March to continue the hackathon.",
+    "Breakfast will not be provided on the morning of 27th March. However, dinner on 26th March and lunch on 27th March will be provided to all participants.",
     "Submission of a No Objection Certificate (NOC) is mandatory for all participants.",
     "Problem statements will be revealed on the spot, i.e. 26th March at 04:30 PM, shortly after the hackathon begins.",
   ];
@@ -83,7 +83,7 @@ export default function Home() {
                   </div>
                   <div>
                     <p className="text-sm opacity-80">End Date & Time</p>
-                    <p className="text-xl font-semibold">March 26th, 2026 • 4:00 PM</p>
+                    <p className="text-xl font-semibold">March 27th, 2026 • 4:00 PM</p>
                   </div>
                   <p className="text-sm opacity-80">Duration: 24 Hours</p>
                 </div>
