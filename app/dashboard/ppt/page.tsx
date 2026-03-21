@@ -19,7 +19,7 @@ export default function PPTPage() {
   const [currentMemberId, setCurrentMemberId] = useState<string | null>(null);
   const [teamId, setTeamId] = useState<string | null>(null);
   const [isLeader, setIsLeader] = useState<boolean>(false);
-  const [effectiveDeadline, setEffectiveDeadline] = useState<Date>(new Date('2026-03-26T14:00:00'));
+  const [effectiveDeadline, setEffectiveDeadline] = useState<Date>(new Date('2026-03-27T14:00:00'));
   const [isFrozen, setIsFrozen] = useState<boolean>(false);
   const router = useRouter();
 
@@ -175,7 +175,7 @@ export default function PPTPage() {
         }
       }
 
-      setEffectiveDeadline(new Date('2026-03-26T14:00:00'));
+      setEffectiveDeadline(new Date('2026-03-27T14:00:00'));
     } catch {
       // ignore
     }

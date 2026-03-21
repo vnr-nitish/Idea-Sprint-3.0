@@ -30,7 +30,7 @@ export default function AdminPPTPage() {
   const [search, setSearch] = useState('');
   const [assignments, setAssignments] = useState<Record<string, any>>({});
 
-  const DEFAULT_DEADLINE_INPUT = '2026-03-26T14:00';
+  const DEFAULT_DEADLINE_INPUT = '2026-03-27T14:00';
   const [selectedTeams, setSelectedTeams] = useState<Record<string, boolean>>({});
   const [bulkDeadlineInput, setBulkDeadlineInput] = useState(DEFAULT_DEADLINE_INPUT);
 
