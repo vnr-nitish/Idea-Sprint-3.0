@@ -324,11 +324,11 @@ export default function DashboardPage() {
                   <div className="space-y-4">
                     <div>
                       <p className="text-sm opacity-80">Start Date & Time</p>
-                      <p className="text-xl font-semibold">March 27th, 2026 • 4:00 PM</p>
+                      <p className="text-xl font-semibold">March 26th, 2026 • 4:00 PM</p>
                     </div>
                     <div>
                       <p className="text-sm opacity-80">End Date & Time</p>
-                      <p className="text-xl font-semibold">March 28th, 2026 • 4:00 PM</p>
+                      <p className="text-xl font-semibold">March 26th, 2026 • 4:00 PM</p>
                     </div>
                     <p className="text-sm opacity-80">Duration: 24 Hours</p>
                   </div>
@@ -339,7 +339,7 @@ export default function DashboardPage() {
                     </div>
                     <div>
                       <p className="text-sm opacity-80">Reporting Time</p>
-                      <p className="text-xl font-semibold">March 27th, 2026 • 4:00 PM</p>
+                      <p className="text-xl font-semibold">March 26th, 2026 • 4:00 PM</p>
                     </div>
                   </div>
                 </div>

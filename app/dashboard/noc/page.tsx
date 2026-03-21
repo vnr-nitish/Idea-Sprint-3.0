@@ -19,7 +19,7 @@ type UploadFile = {
   data: string;
 };
 
-const DEFAULT_DEADLINE = new Date('2026-03-27T18:00:00');
+const DEFAULT_DEADLINE = new Date('2026-03-26T18:00:00');
 
 const normalizeToken = (value: unknown) => String(value || '').trim().toLowerCase();
 
@@ -393,7 +393,7 @@ export default function NOCPage() {
             <div className="hh-card p-6 border-2 border-gitam-200">
               <h2 className="text-2xl font-semibold text-gitam-700 mb-4">Important Instructions</h2>
               <ul className="list-disc pl-6 space-y-2 text-gitam-700">
-                <li>Please upload a signed PDF NOC before March 27th, 6 PM.</li>
+                <li>Please upload a signed PDF NOC before March 26th, 6 PM.</li>
                 <li>Make sure the uploaded file is the correct signed document to avoid disqualification.</li>
                 <li>Max file size: {maxNocMb} MB.</li>
                 <li>
