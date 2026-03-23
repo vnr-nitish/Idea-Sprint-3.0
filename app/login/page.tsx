@@ -6,7 +6,6 @@ import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { loginWithIdentifierAndPassword } from '@/lib/teamsBackend';
 import { listReportingSpocs } from '@/lib/reportingBackend';
 import { setStoredSpocUser } from '@/lib/spocSession';
-import { ensureDefaultSpocs } from '@/lib/spocDefaults';
 
 type SpocRecord = {
   id: string;
@@ -30,6 +29,15 @@ const readLocalSpocs = (): SpocRecord[] => {
   } catch {
     return [];
   }
+};
+
+const normalizeSpocPasswordInput = (value: string) =>
+  String(value || '').replace(/\s+/g, '').toLowerCase();
+
+const buildSpocPassword = (name: string, phone: string) => {
+  const compactName = String(name || '').replace(/\s+/g, '');
+  const phoneDigits = String(phone || '').replace(/\D/g, '');
+  return `${compactName}${phoneDigits}`.toLowerCase();
 };
 
 export default function LoginPage() {
@@ -211,9 +219,9 @@ export default function LoginPage() {
           return;
         }
 
-        // SPOC login via reporting SPOC records (password stored in phone field).
+        // SPOC login via reporting SPOC records (password: NameWithoutSpaces + PhoneNumber).
         try {
-          let spocs: SpocRecord[] = ensureDefaultSpocs(readLocalSpocs());
+          let spocs: SpocRecord[] = readLocalSpocs();
           const remoteSpocs = await listReportingSpocs();
           if (Array.isArray(remoteSpocs) && remoteSpocs.length) {
             const remoteMapped = remoteSpocs.map((s: any) => ({
@@ -222,12 +230,17 @@ export default function LoginPage() {
               email: String(s?.email || '').trim().toLowerCase(),
               phone: String(s?.phone || '').trim(),
             }));
-            spocs = ensureDefaultSpocs(remoteMapped);
+            spocs = remoteMapped;
           }
           localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
 
           const matchedSpoc = spocs.find((s) => s.email === emailRaw);
-          if (matchedSpoc && passwordRaw && passwordRaw === String(matchedSpoc.phone || '').trim()) {
+          if (
+            matchedSpoc
+            && passwordRaw
+            && normalizeSpocPasswordInput(passwordRaw)
+              === buildSpocPassword(String(matchedSpoc.name || ''), String(matchedSpoc.phone || ''))
+          ) {
             setStoredSpocUser({
               id: matchedSpoc.id,
               name: matchedSpoc.name,
@@ -271,10 +284,15 @@ export default function LoginPage() {
 
       // SPOC login fallback from local storage records.
       try {
-        const spocs: SpocRecord[] = ensureDefaultSpocs(readLocalSpocs());
+        const spocs: SpocRecord[] = readLocalSpocs();
         localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
         const matchedSpoc = spocs.find((s) => s.email === emailRaw);
-        if (matchedSpoc && passwordRaw && passwordRaw === String(matchedSpoc.phone || '').trim()) {
+        if (
+          matchedSpoc
+          && passwordRaw
+          && normalizeSpocPasswordInput(passwordRaw)
+            === buildSpocPassword(String(matchedSpoc.name || ''), String(matchedSpoc.phone || ''))
+        ) {
           setStoredSpocUser({
             id: matchedSpoc.id,
             name: matchedSpoc.name,
