@@ -739,11 +739,74 @@ export default function TeamProfilesPage() {
     }
   }, [schoolFilter, uniqueSchools]);
 
-  const exportCSV = (rows:any[]) => {
-    const cols = ['teamName','domain','venue','spoc','teamPassword','memberIndex','memberName','registrationNumber','email','phoneNumber','school','program','programOther','branch','campus','yearOfStudy','stay'];
-    const lines = [cols.join(',')];
-    rows.forEach((t:any)=>{ (t.members||[]).forEach((m:any,idx:number)=>{ const vals=[t.teamName,normalizeDomain(t.domain),getVenueForTeam(t)||'',getSpocForTeam(t.teamName),t.teamPassword,idx+1,m.name,m.registrationNumber,m.email,m.phoneNumber,m.school,m.program,m.programOther,m.branch,m.campus,m.yearOfStudy,m.stay]; lines.push(vals.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')); }); });
-    const blob = new Blob([lines.join('\n')], { type: 'text/csv' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'registered_teams.csv'; a.click(); URL.revokeObjectURL(url);
+  const toCsvCell = (value: any) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
+  const downloadCsv = (fileName: string, headers: string[], rows: any[][]) => {
+    const lines = [
+      headers.join(','),
+      ...rows.map((row) => row.map((v) => toCsvCell(v)).join(',')),
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const getTeamAttendanceDisplay = (teamName: string) => {
+    return draftTeamAttendance[teamName] !== undefined
+      ? draftTeamAttendance[teamName]
+      : (teamAttendance[teamName] || '');
+  };
+
+  const exportTeamsCsv = (rows: any[]) => {
+    const headers = ['Campus', 'Domain', 'Team Name', 'Team Lead', 'Lead Phone', 'Size', 'Venue', 'SPOC', 'Attendance'];
+    const body = rows.map((t: any) => {
+      const lead = getLeadMember(t);
+      return [
+        (t.members || [])[0]?.campus || '-',
+        normalizeDomain(t.domain) || '-',
+        t.teamName || '-',
+        lead?.name || '-',
+        lead?.phoneNumber || '-',
+        (t.members || []).length,
+        getVenueForTeam(t) || '-',
+        getSpocForTeam(t.teamName) || '-',
+        getTeamAttendanceDisplay(String(t.teamName || '')) || '-',
+      ];
+    });
+    downloadCsv('team_profiles_teams.csv', headers, body);
+  };
+
+  const exportIndividualsCsv = (rows: any[]) => {
+    const headers = ['Campus', 'Domain', 'Team Name', 'Team Size', 'Name', 'Position', 'Email', 'Reg No', 'Phone No', 'Year', 'School', 'Branch', 'Stay', 'Venue', 'SPOC', 'Attendance'];
+    const body = rows.map((m: any) => {
+      const key = `member_attendance_${m.teamName}_${m.memberKey}`;
+      const attendanceValue = draftMemberAttendance[key] !== undefined
+        ? draftMemberAttendance[key]
+        : (memberAttendance[key] || getMemberAttendanceDisplay(m.teamName, m.memberKey) || '');
+      return [
+        m.campus || '-',
+        normalizeDomain(m.domain) || '-',
+        m.teamName || '-',
+        m.teamSize || '-',
+        m.name || '-',
+        m.position || 'Member',
+        m.email || '-',
+        m.registrationNumber || '-',
+        m.phoneNumber || '-',
+        m.yearOfStudy || '-',
+        m.school || '-',
+        m.branch || '-',
+        m.stay || '-',
+        m.venue || '-',
+        m.spoc || '-',
+        attendanceValue || '-',
+      ];
+    });
+    downloadCsv('team_profiles_individuals.csv', headers, body);
   };
 
   const downloadJson = (fileName: string, payload: any) => {
@@ -1056,7 +1119,7 @@ export default function TeamProfilesPage() {
                 </div>
                 <div className="flex gap-2">
                   <button onClick={bulkSaveAllAttendance} className="hh-btn px-3 py-2 border-2 text-sm font-semibold">💾 Bulk Save ({Object.keys(draftTeamAttendance).length})</button>
-                  <button onClick={()=>exportCSV(filteredTeams)} className="hh-btn-outline px-3 py-2 border-2 text-sm">Export CSV</button>
+                  <button onClick={()=>exportTeamsCsv(filteredTeams)} className="hh-btn-outline px-3 py-2 border-2 text-sm">Export CSV</button>
                 </div>
               </div>
             </div>
@@ -1117,7 +1180,7 @@ export default function TeamProfilesPage() {
                       <td className="p-3 w-[170px]">
                         <div className="flex gap-1.5 whitespace-nowrap">
                           <button onClick={()=>openTeamEditor(t)} className="hh-btn px-2.5 py-1.5 text-xs">✏️ Edit</button>
-                          <button onClick={()=>exportCSV([t])} className="hh-btn-outline px-2.5 py-1.5 text-xs">📄 Export</button>
+                          <button onClick={()=>exportTeamsCsv([t])} className="hh-btn-outline px-2.5 py-1.5 text-xs">📄 Export</button>
                           <button onClick={()=>deleteTeam(t)} className="hh-btn-outline px-2 py-1.5 text-xs text-red-600 hover:bg-red-50">🗑️</button>
                         </div>
                       </td>
@@ -1234,12 +1297,7 @@ export default function TeamProfilesPage() {
                 </div>
                 <div className="flex gap-2">
                   <button onClick={bulkSaveAllAttendance} className="hh-btn px-3 py-2 border-2 text-sm font-semibold">💾 Bulk Save ({Object.keys(draftMemberAttendance).length})</button>
-                  <button onClick={()=>{
-                const cols = ['campus','teamName','domain','venue','spoc','name','email','registrationNumber','phoneNumber','school','program','programOther','branch','yearOfStudy','stay'];
-                const lines = [cols.join(',')];
-                filteredIndividuals.forEach((m:any)=>{ const vals=[m.campus,m.teamName,normalizeDomain(m.domain),m.venue||'',m.spoc||'',m.name,m.email,m.registrationNumber,m.phoneNumber,m.school,m.program,m.programOther,m.branch,m.yearOfStudy,m.stay]; lines.push(vals.map(v=>`"${String(v||'').replace(/"/g,'""')}"`).join(',')); });
-                const blob = new Blob([lines.join('\n')], { type: 'text/csv' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'individuals.csv'; a.click(); URL.revokeObjectURL(url);
-              }} className="hh-btn-outline px-3 py-2 border-2 text-sm">Export CSV</button>
+                  <button onClick={()=>exportIndividualsCsv(filteredIndividuals)} className="hh-btn-outline px-3 py-2 border-2 text-sm">Export CSV</button>
                 </div>
               </div>
             </div>
