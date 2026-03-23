@@ -2,14 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, syncTeamMembers, updateTeam } from '@/lib/teamsBackend';
 import { deleteAllNocForTeam } from '@/lib/nocBackend';
 import { deleteAllPptForTeam } from '@/lib/pptBackend';
 import { listReportingAssignments } from '@/lib/reportingBackend';
+import { filterTeamsForSpoc, getStoredSpocUser, isSpocLoggedIn, SpocUser } from '@/lib/spocSession';
 
 export default function TeamProfilesPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const isSpocView = (pathname || '').startsWith('/spoc');
+  const [spocUser, setSpocUser] = useState<SpocUser | null>(null);
   const [registered, setRegistered] = useState<any[]>([]);
   const [campusFilter, setCampusFilter] = useState('All');
   const [yearFilter, setYearFilter] = useState('All');
@@ -131,6 +136,19 @@ export default function TeamProfilesPage() {
   };
 
   const reportingAssignmentsIndex = buildReportingAssignmentsIndex(reportingAssignmentsMap);
+
+  useEffect(() => {
+    if (!isSpocView) return;
+    if (!isSpocLoggedIn()) {
+      router.push('/spoc');
+      return;
+    }
+    setSpocUser(getStoredSpocUser());
+  }, [isSpocView, router]);
+
+  const scopedRegistered = isSpocView
+    ? filterTeamsForSpoc(registered, reportingAssignmentsMap, spocUser)
+    : registered;
 
   const reloadRegistered = async () => {
     try {
@@ -620,9 +638,9 @@ export default function TeamProfilesPage() {
     }
   };
 
-  const uniqueCampuses = Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.campus)).filter(Boolean)));
-  const uniquePrograms = Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.program)).filter(Boolean)));
-  const individualRows = registered.flatMap((t:any)=>(t.members||[]).map((m:any,idx:number)=>(
+  const uniqueCampuses = Array.from(new Set(scopedRegistered.flatMap(t => (t.members||[]).map((m:any)=>m.campus)).filter(Boolean)));
+  const uniquePrograms = Array.from(new Set(scopedRegistered.flatMap(t => (t.members||[]).map((m:any)=>m.program)).filter(Boolean)));
+  const individualRows = scopedRegistered.flatMap((t:any)=>(t.members||[]).map((m:any,idx:number)=>(
     (() => {
       const leadMember = getLeadMember(t);
       const leadIdentity = leadMember ? getMemberIdentity(leadMember, 0) : '';
@@ -642,10 +660,10 @@ export default function TeamProfilesPage() {
   )));
   const uniqueDomains = DOMAIN_OPTIONS;
   const uniqueTeamSizes = [3, 4];
-  const uniqueVenues = Array.from(new Set(registered.map((t:any)=>getVenueForTeam(t)).filter(Boolean)));
-  const uniqueSpocs = Array.from(new Set(registered.map((t:any)=>getSpocForTeam(t.teamName)).filter((s:string)=>s && s!=='-')));
+  const uniqueVenues = Array.from(new Set(scopedRegistered.map((t:any)=>getVenueForTeam(t)).filter(Boolean)));
+  const uniqueSpocs = Array.from(new Set(scopedRegistered.map((t:any)=>getSpocForTeam(t.teamName)).filter((s:string)=>s && s!=='-')));
 
-  const filteredTeams = registered.filter((t:any)=>{
+  const filteredTeams = scopedRegistered.filter((t:any)=>{
     if (campusFilter !== 'All') {
       const teamCampuses = Array.from(new Set((t.members||[]).map((m:any)=>m.campus)));
       if (!teamCampuses.includes(campusFilter)) return false;
@@ -955,7 +973,7 @@ export default function TeamProfilesPage() {
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-gitam-700">Team Profiles - Full View</h1>
             <button
-              onClick={() => router.push('/admin/dashboard')}
+              onClick={() => router.push(isSpocView ? '/spoc/dashboard' : '/admin/dashboard')}
               className="hh-btn-outline px-4 py-2 border-2"
             >
               ← Back to dashboard

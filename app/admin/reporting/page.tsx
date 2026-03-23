@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
 import { listReportingAssignments, upsertManyReportingAssignments } from '@/lib/reportingBackend';
+import { filterTeamsForSpoc, getStoredSpocUser, isSpocLoggedIn, SpocUser } from '@/lib/spocSession';
 
 type TeamRow = {
   teamName: string;
@@ -124,6 +126,9 @@ const mergeAssignmentsSafely = (
 
 export default function AdminReportingPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const isSpocView = (pathname || '').startsWith('/spoc');
+  const [spocUser, setSpocUser] = useState<SpocUser | null>(null);
   const [ok, setOk] = useState(false);
   const [teams, setTeams] = useState<any[]>([]);
   const [assignments, setAssignments] = useState<Record<string, ReportingAssignment>>({});
@@ -208,16 +213,24 @@ export default function AdminReportingPage() {
 
   useEffect(() => {
     try {
-      const a = localStorage.getItem('adminLoggedIn');
-      if (!a) {
-        router.push('/admin');
-        return;
+      if (isSpocView) {
+        if (!isSpocLoggedIn()) {
+          router.push('/spoc');
+          return;
+        }
+        setSpocUser(getStoredSpocUser());
+      } else {
+        const a = localStorage.getItem('adminLoggedIn');
+        if (!a) {
+          router.push('/admin');
+          return;
+        }
       }
       setOk(true);
     } catch {
-      router.push('/admin');
+      router.push(isSpocView ? '/spoc' : '/admin');
     }
-  }, [router]);
+  }, [router, isSpocView]);
 
   useEffect(() => {
     if (!ok) return;
@@ -310,8 +323,13 @@ export default function AdminReportingPage() {
     return () => clearInterval(poll);
   }, [ok]);
 
+  const visibleTeams = useMemo(() => {
+    if (!isSpocView) return teams || [];
+    return filterTeamsForSpoc(teams || [], assignments || {}, spocUser);
+  }, [teams, assignments, spocUser, isSpocView]);
+
   const normalizedTeams: TeamRow[] = useMemo(() => {
-    return (teams || [])
+    return (visibleTeams || [])
       .map((t: any) => {
         const members = Array.isArray(t?.members) ? t.members : [];
         const lead = members[0] || {};
@@ -324,7 +342,9 @@ export default function AdminReportingPage() {
         } satisfies TeamRow;
       })
       .filter((t) => t.teamName);
-  }, [teams]);
+    }, [visibleTeams]);
+
+    const readOnlyReporting = isSpocView;
 
   const uniqueCampuses = useMemo(() => {
     return Array.from(new Set(normalizedTeams.map((t) => t.campus).filter(Boolean))).sort();
@@ -646,10 +666,14 @@ export default function AdminReportingPage() {
         <div className="bg-white rounded-lg shadow-md border-2 border-gitam-300 p-6 mb-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <div>
-              <h1 className="text-3xl font-bold text-gitam-700">Reporting - Admin</h1>
-              <p className="text-sm text-gitam-600 mt-2">Assign venue, reporting date and time for each team. Save is enabled only after all three fields are filled.</p>
+              <h1 className="text-3xl font-bold text-gitam-700">{readOnlyReporting ? 'Reporting - SPOC' : 'Reporting - Admin'}</h1>
+              <p className="text-sm text-gitam-600 mt-2">
+                {readOnlyReporting
+                  ? 'View reporting venue, date and time for teams assigned to you.'
+                  : 'Assign venue, reporting date and time for each team. Save is enabled only after all three fields are filled.'}
+              </p>
             </div>
-            <button onClick={() => router.push('/admin/dashboard')} className="hh-btn-outline px-4 py-2 border-2">← Back to dashboard</button>
+            <button onClick={() => router.push(readOnlyReporting ? '/spoc/dashboard' : '/admin/dashboard')} className="hh-btn-outline px-4 py-2 border-2">← Back to dashboard</button>
           </div>
         </div>
 
@@ -724,6 +748,7 @@ export default function AdminReportingPage() {
           </div>
 
           {/* Bulk Assign Section */}
+          {!readOnlyReporting ? (
           <div className="p-4 bg-gitam-50 rounded-lg border-2 border-gitam-200 flex flex-col md:flex-row md:items-end gap-4">
             <div className="text-sm text-gitam-700">
               <div className="font-semibold">Bulk Assign</div>
@@ -753,6 +778,7 @@ export default function AdminReportingPage() {
               <button className="hh-btn px-4 py-2" onClick={exportToExcel} disabled={assignedTeams.length === 0}>📥 Export</button>
             </div>
           </div>
+          ) : null}
         </div>
 
         {/* Assigned Count */}
@@ -766,12 +792,14 @@ export default function AdminReportingPage() {
             <thead>
               <tr className="bg-gitam-50 border-b-2 border-gitam-300">
                 <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">
-                  <input
-                    type="checkbox"
-                    checked={allMatchingSelected}
-                    onChange={(e) => setSelectAllMatching(e.target.checked)}
-                    aria-label="Select all teams matching filters"
-                  />
+                  {readOnlyReporting ? '#' : (
+                    <input
+                      type="checkbox"
+                      checked={allMatchingSelected}
+                      onChange={(e) => setSelectAllMatching(e.target.checked)}
+                      aria-label="Select all teams matching filters"
+                    />
+                  )}
                 </th>
                 <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Campus</th>
                 <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Team Name</th>
@@ -799,7 +827,7 @@ export default function AdminReportingPage() {
                   const saved = assignments[t.teamName] || assignmentsIndexRef.current[canonicalTeamKey(t.teamName)] || {};
                   const assigned = !!(saved.venue && saved.date && saved.time);
                   const isEditing = !!editing[t.teamName];
-                  const locked = assigned && !isEditing;
+                  const locked = readOnlyReporting || (assigned && !isEditing);
                   const complete = !!(draft.venue && draft.date && draft.time);
                   const changed =
                     String(draft.venue || '') !== String(saved.venue || '') ||
@@ -810,12 +838,16 @@ export default function AdminReportingPage() {
                   return (
                     <tr key={t.teamName} className="border-b border-gitam-200 odd:bg-white even:bg-gitam-50/40 hover:bg-gitam-100 transition">
                       <td className="p-3 border-r border-gitam-100">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={(e) => toggleSelected(t.teamName, e.target.checked)}
-                          aria-label={`Select ${t.teamName}`}
-                        />
+                        {readOnlyReporting ? (
+                          <span className="text-gitam-600">-</span>
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => toggleSelected(t.teamName, e.target.checked)}
+                            aria-label={`Select ${t.teamName}`}
+                          />
+                        )}
                       </td>
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{t.campus || '-'}</td>
                       <td className="p-3 font-semibold text-gitam-700 border-r border-gitam-100">{t.teamName}</td>
@@ -866,7 +898,9 @@ export default function AdminReportingPage() {
                       </td>
                       <td className="p-3">
                         <div className="flex items-center gap-1 flex-wrap">
-                          {locked ? (
+                          {readOnlyReporting ? (
+                            <span className="text-xs text-gitam-700/70 whitespace-nowrap">View only</span>
+                          ) : locked ? (
                             <button className="hh-btn px-3 py-1 text-xs" onClick={() => startEdit(t.teamName)}>✏️ Edit</button>
                           ) : (
                             <>

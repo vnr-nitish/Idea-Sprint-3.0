@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
+import { filterTeamsForSpoc, getStoredSpocUser, isSpocLoggedIn, SpocUser } from '@/lib/spocSession';
 import {
   deleteProblemStatementById,
   listProblemStatements,
@@ -23,6 +25,9 @@ interface ProblemStatement {
 
 export default function AdminProblemStatementsPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const isSpocView = (pathname || '').startsWith('/spoc');
+  const [spocUser, setSpocUser] = useState<SpocUser | null>(null);
   const [tab, setTab] = useState<'statements' | 'teams'>('statements');
   const [registered, setRegistered] = useState<any[]>([]);
   const [problems, setProblems] = useState<ProblemStatement[]>([]);
@@ -72,6 +77,21 @@ export default function AdminProblemStatementsPage() {
   };
 
   const getZoneForTeam = useCallback((teamName: string) => assignments[teamName]?.venue || '-', [assignments]);
+
+  useEffect(() => {
+    if (!isSpocView) return;
+    if (!isSpocLoggedIn()) {
+      router.push('/spoc');
+      return;
+    }
+    setSpocUser(getStoredSpocUser());
+    setTab('teams');
+  }, [isSpocView, router]);
+
+  const scopedRegistered = useMemo(() => {
+    if (!isSpocView) return registered;
+    return filterTeamsForSpoc(registered, assignments, spocUser);
+  }, [registered, assignments, spocUser, isSpocView]);
 
   const getSpocForTeam = useCallback((teamName: string) => {
     return String(assignments[teamName]?.spoc?.name || '-');
@@ -377,7 +397,7 @@ export default function AdminProblemStatementsPage() {
   };
 
   // Get unique values for filters
-  const uniqueCampuses = useMemo(() => Array.from(new Set(registered.map((r) => r.members?.[0]?.campus).filter(Boolean))), [registered]);
+  const uniqueCampuses = useMemo(() => Array.from(new Set(scopedRegistered.map((r) => r.members?.[0]?.campus).filter(Boolean))), [scopedRegistered]);
   const uniqueDomains = DOMAIN_OPTIONS;
   const uniqueZones = useMemo(() => Array.from(new Set(Object.values(assignments).map((a: any) => a?.venue).filter(Boolean))), [assignments]);
   const uniqueSpocs = useMemo(() => Array.from(new Set(Object.values(assignments).map((a: any) => a?.spoc?.name).filter(Boolean))), [assignments]);
@@ -399,7 +419,7 @@ export default function AdminProblemStatementsPage() {
 
   // Filter teams
   const filteredTeams = useMemo(() => {
-    return registered.filter((t: any) => {
+    return scopedRegistered.filter((t: any) => {
       const campus = String(t.members?.[0]?.campus || '');
       const teamDomain = normalizeDomain(t.domain);
       const psCode = getTeamSelectedCode(t);
@@ -421,7 +441,7 @@ export default function AdminProblemStatementsPage() {
       }
       return true;
     });
-  }, [registered, campusFilter, domainFilter, attendanceFilter, zoneFilter, spocFilter, search, getTeamSelectedCode, getZoneForTeam, getSpocForTeam]);
+  }, [scopedRegistered, campusFilter, domainFilter, attendanceFilter, zoneFilter, spocFilter, search, getTeamSelectedCode, getZoneForTeam, getSpocForTeam]);
 
   useEffect(() => {
     const allowed = new Set(
@@ -640,7 +660,7 @@ export default function AdminProblemStatementsPage() {
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-gitam-700">Problem Statements</h1>
             <button
-              onClick={() => router.push('/admin/dashboard')}
+              onClick={() => router.push(isSpocView ? '/spoc/dashboard' : '/admin/dashboard')}
               className="hh-btn-outline px-4 py-2 border-2"
             >
               ← Back to dashboard
@@ -652,6 +672,7 @@ export default function AdminProblemStatementsPage() {
         {/* Tabs */}
         <div className="bg-white rounded-lg shadow-md border-2 border-gitam-300 p-4 mb-6">
           <div className="flex gap-2">
+            {!isSpocView ? (
             <button
               onClick={() => setTab('statements')}
               className={`px-6 py-2 rounded-lg font-semibold transition ${
@@ -662,6 +683,7 @@ export default function AdminProblemStatementsPage() {
             >
               Problem Statements
             </button>
+            ) : null}
             <button
               onClick={() => setTab('teams')}
               className={`px-6 py-2 rounded-lg font-semibold transition ${

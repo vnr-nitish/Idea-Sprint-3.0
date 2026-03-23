@@ -2,9 +2,11 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
 import { listTeamProblemSelections } from '@/lib/problemBackend';
+import { filterTeamsForSpoc, getStoredSpocUser, isSpocLoggedIn, SpocUser } from '@/lib/spocSession';
 import {
   deletePpt as deletePptBackend,
   getPpt as getPptBackend,
@@ -18,6 +20,9 @@ import {
 
 export default function AdminPPTPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const isSpocView = (pathname || '').startsWith('/spoc');
+  const [spocUser, setSpocUser] = useState<SpocUser | null>(null);
   const [registered, setRegistered] = useState<any[]>([]);
   const [teamSelections, setTeamSelections] = useState<Record<string, string>>({});
   const [campusFilter, setCampusFilter] = useState('All');
@@ -37,6 +42,20 @@ export default function AdminPPTPage() {
   const [backendUploads, setBackendUploads] = useState<Record<string, { fileName: string; filePath: string; uploadedAt: string }>>({});
   const [adminSelectedFiles, setAdminSelectedFiles] = useState<Record<string, File | null>>({});
   const [adminUploadingRows, setAdminUploadingRows] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (!isSpocView) return;
+    if (!isSpocLoggedIn()) {
+      router.push('/spoc');
+      return;
+    }
+    setSpocUser(getStoredSpocUser());
+  }, [isSpocView, router]);
+
+  const scopedRegistered = useMemo(() => {
+    if (!isSpocView) return registered;
+    return filterTeamsForSpoc(registered, assignments, spocUser);
+  }, [registered, assignments, spocUser, isSpocView]);
 
   const keyFor = (teamId: string, campus: string) => `${teamId}::${campus}`;
   const localKeyFor = (teamName: string, campus: string) => `ppt_${encodeURIComponent(teamName)}_${encodeURIComponent(campus)}`;
@@ -236,7 +255,7 @@ export default function AdminPPTPage() {
   
 
   const filteredTeams = useMemo(() => {
-    return registered.filter((t: any) => {
+    return scopedRegistered.filter((t: any) => {
       const campus = String(t.members?.[0]?.campus || '');
       const domain = normalizeDomain(t.domain);
       const size = (t.members || []).length;
@@ -264,9 +283,9 @@ export default function AdminPPTPage() {
       return true;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [registered, campusFilter, domainFilter, teamSizeFilter, attendanceFilter, venueFilter, spocFilter, pptStatusFilter, search, assignments, backendUploads]);
+  }, [scopedRegistered, campusFilter, domainFilter, teamSizeFilter, attendanceFilter, venueFilter, spocFilter, pptStatusFilter, search, assignments, backendUploads]);
 
-  const uniqueCampuses = useMemo(() => Array.from(new Set(registered.map((r) => r.members?.[0]?.campus).filter(Boolean))), [registered]);
+  const uniqueCampuses = useMemo(() => Array.from(new Set(scopedRegistered.map((r) => r.members?.[0]?.campus).filter(Boolean))), [scopedRegistered]);
   const uniqueDomains = DOMAIN_OPTIONS;
   const uniqueTeamSizes = ['3', '4'];
   const uniqueVenues = useMemo(() => Array.from(new Set(Object.values(assignments).map((a: any) => a?.venue).filter(Boolean))), [assignments]);
@@ -411,9 +430,9 @@ export default function AdminPPTPage() {
       <div className="max-w-7xl mx-auto">
         <div className="bg-white rounded-lg shadow-md border-2 border-gitam-300 p-6 mb-6">
           <div className="flex justify-between items-center">
-            <h1 className="text-3xl font-bold text-gitam-700">PPT - Admin</h1>
+            <h1 className="text-3xl font-bold text-gitam-700">{isSpocView ? 'PPT - SPOC' : 'PPT - Admin'}</h1>
             <button
-              onClick={() => router.push('/admin/dashboard')}
+              onClick={() => router.push(isSpocView ? '/spoc/dashboard' : '/admin/dashboard')}
               className="hh-btn-outline px-4 py-2 border-2"
             >
               ← Back to dashboard

@@ -1,10 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { OTHER_LINKS } from '@/lib/otherLinks';
 
 export default function AdminOthersPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const isSpocView = (pathname || '').startsWith('/spoc');
 
   const openLink = (title: string, url: string) => {
     if (!url) {
@@ -24,7 +27,7 @@ export default function AdminOthersPage() {
               <p className="text-sm text-gitam-700/75 mt-1">Use this section for external forms and shared documents.</p>
             </div>
             <button
-              onClick={() => router.push('/admin/dashboard')}
+              onClick={() => router.push(isSpocView ? '/spoc/dashboard' : '/admin/dashboard')}
               className="hh-btn-outline px-4 py-2 border-2"
             >
               ← Back to dashboard

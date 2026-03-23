@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import {
   deleteNoc as deleteNocBackend,
   getNoc as getNocBackend,
@@ -14,9 +15,13 @@ import {
 } from '@/lib/nocBackend';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
+import { filterTeamsForSpoc, getStoredSpocUser, isSpocLoggedIn, SpocUser } from '@/lib/spocSession';
 
 export default function AdminNOCPage(){
   const router = useRouter();
+  const pathname = usePathname();
+  const isSpocView = (pathname || '').startsWith('/spoc');
+  const [spocUser, setSpocUser] = useState<SpocUser | null>(null);
   const [registered, setRegistered] = useState<any[]>([]);
   const [tab, setTab] = useState<'teams'|'individuals'>('teams');
   const [campusFilter, setCampusFilter] = useState('All');
@@ -56,6 +61,20 @@ export default function AdminNOCPage(){
   const [adminSelectedFiles, setAdminSelectedFiles] = useState<Record<string, File | null>>({});
   const [adminUploadingRows, setAdminUploadingRows] = useState<Record<string, boolean>>({});
   const isTeamModalOpen = !!selectedTeam;
+
+  useEffect(() => {
+    if (!isSpocView) return;
+    if (!isSpocLoggedIn()) {
+      router.push('/spoc');
+      return;
+    }
+    setSpocUser(getStoredSpocUser());
+  }, [isSpocView, router]);
+
+  const scopedRegistered = useMemo(() => {
+    if (!isSpocView) return registered;
+    return filterTeamsForSpoc(registered, assignments, spocUser);
+  }, [registered, assignments, spocUser, isSpocView]);
 
   useEffect(() => {
     const navbar = document.querySelector('nav');
@@ -256,7 +275,7 @@ export default function AdminNOCPage(){
 
   const teamRowKey = (team: any) => `${String(team?.teamName || '')}::${String((team?.members || [])[0]?.campus || '')}`;
 
-  const uniqueCampuses = useMemo(()=> Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.campus)).filter(Boolean))), [registered]);
+  const uniqueCampuses = useMemo(()=> Array.from(new Set(scopedRegistered.flatMap(t => (t.members||[]).map((m:any)=>m.campus)).filter(Boolean))), [scopedRegistered]);
   const uniqueDomains = DOMAIN_OPTIONS;
   const uniqueTeamSizes = ['3', '4'];
   const uniqueZones = useMemo(() => {
@@ -372,7 +391,7 @@ export default function AdminNOCPage(){
   const openMember = (member:any) => {
     const id = getMemberId(member);
     setSelectedMemberId(id);
-    const team = selectedTeam || registered.find(r=>r.teamName===member.teamName);
+    const team = selectedTeam || scopedRegistered.find(r=>r.teamName===member.teamName);
     if (isSupabaseConfigured() && team) {
       (async () => {
         try {
@@ -402,7 +421,7 @@ export default function AdminNOCPage(){
   // Flatten individuals
   const individuals = useMemo(
     () =>
-      registered.flatMap((t) =>
+      scopedRegistered.flatMap((t) =>
         (t.members || []).map((m: any) => ({
           ...m,
           teamName: t.teamName,
@@ -414,7 +433,7 @@ export default function AdminNOCPage(){
   );
 
   const filteredTeams = useMemo(() => {
-    return registered.filter((t:any)=>{
+    return scopedRegistered.filter((t:any)=>{
       const camp = (t.members||[])[0]?.campus||'';
       const size = (t.members||[]).length;
       const attendance = getTeamAttendance(String(t.teamName || ''));
@@ -646,7 +665,7 @@ export default function AdminNOCPage(){
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-gitam-700">NOC - Admin</h1>
             <button
-              onClick={() => router.push('/admin/dashboard')}
+              onClick={() => router.push(isSpocView ? '/spoc/dashboard' : '/admin/dashboard')}
               className="hh-btn-outline px-4 py-2 border-2"
             >
               ← Back to dashboard

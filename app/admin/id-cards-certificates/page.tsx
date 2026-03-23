@@ -2,12 +2,17 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
 import { replaceIdCardCertificatesForTeam } from '@/lib/idCardCertificateBackend';
+import { filterTeamsForSpoc, getStoredSpocUser, isSpocLoggedIn, SpocUser } from '@/lib/spocSession';
 
 export default function AdminIdCardsCertificatesPage(){
   const router = useRouter();
+  const pathname = usePathname();
+  const isSpocView = (pathname || '').startsWith('/spoc');
+  const [spocUser, setSpocUser] = useState<SpocUser | null>(null);
   const [registered, setRegistered] = useState<any[]>([]);
   const [tab, setTab] = useState<'teams'|'individuals'>('teams');
   const [campusFilter, setCampusFilter] = useState('All');
@@ -28,6 +33,15 @@ export default function AdminIdCardsCertificatesPage(){
   const [dinnerRedeemFilter, setDinnerRedeemFilter] = useState('All');
   const [lunchRedeemFilter, setLunchRedeemFilter] = useState('All');
   const isAnyModalOpen = !!selectedTeam || !!individualModal;
+
+  useEffect(() => {
+    if (!isSpocView) return;
+    if (!isSpocLoggedIn()) {
+      router.push('/spoc');
+      return;
+    }
+    setSpocUser(getStoredSpocUser());
+  }, [isSpocView, router]);
 
   useEffect(() => {
     const navbar = document.querySelector('nav');
@@ -197,7 +211,12 @@ export default function AdminIdCardsCertificatesPage(){
     return String(value);
   };
 
-  const uniqueCampuses = useMemo(()=> Array.from(new Set(registered.flatMap(t => (t.members||[]).map((m:any)=>m.campus)).filter(Boolean))), [registered]);
+  const scopedRegistered = useMemo(() => {
+    if (!isSpocView) return registered;
+    return filterTeamsForSpoc(registered, assignments, spocUser);
+  }, [registered, assignments, spocUser, isSpocView]);
+
+  const uniqueCampuses = useMemo(()=> Array.from(new Set(scopedRegistered.flatMap(t => (t.members||[]).map((m:any)=>m.campus)).filter(Boolean))), [scopedRegistered]);
   const uniqueDomains = ['App Development', 'Cyber Security', 'AI', 'ML & DS'];
   const uniqueVenues = useMemo(() => {
     return Array.from(new Set(Object.values(assignments).map((a: any) => a?.venue).filter(Boolean)));
@@ -371,7 +390,7 @@ export default function AdminIdCardsCertificatesPage(){
     setSelectedMemberId(id);
     // Ensure we have team coupons loaded for the team
     let team = selectedTeam;
-    if(!team && member.teamName){ team = registered.find(r=>r.teamName === member.teamName) || null; }
+    if(!team && member.teamName){ team = scopedRegistered.find(r=>r.teamName === member.teamName) || null; }
     let arr = teamCoupons;
     if(!arr && team){ arr = ensureCouponsForTeam(team); setTeamCoupons(arr); }
     const couponsForMember = (arr||[]).filter((c:any)=>String(c.memberId)===String(id));
@@ -387,7 +406,7 @@ export default function AdminIdCardsCertificatesPage(){
   };
 
   const openIndividualModal = (member:any) => {
-    const team = registered.find((r:any)=>String(r.teamName)===String(member.teamName));
+    const team = scopedRegistered.find((r:any)=>String(r.teamName)===String(member.teamName));
     if(!team) return;
 
     // Close team modal state if any.
@@ -462,7 +481,7 @@ export default function AdminIdCardsCertificatesPage(){
   };
 
   // Individuals list flattened
-  const individuals = useMemo(()=> registered.flatMap(t => (t.members||[]).map((m:any, idx:number)=>({
+  const individuals = useMemo(()=> scopedRegistered.flatMap(t => (t.members||[]).map((m:any, idx:number)=>({
     ...m,
     couponMemberId: getCouponMemberId(m, idx),
     teamName: t.teamName,
@@ -471,7 +490,7 @@ export default function AdminIdCardsCertificatesPage(){
   }))), [registered]);
   const uniqueStays = useMemo(()=> Array.from(new Set(individuals.map((m:any)=>m.stay).filter(Boolean))), [individuals]);
 
-  const filteredTeams = registered.filter((t: any) => {
+  const filteredTeams = scopedRegistered.filter((t: any) => {
     const camp = (t.members || [])[0]?.campus || '';
     if (campusFilter !== 'All' && camp !== campusFilter) return false;
     if (domainFilter !== 'All' && normalizeDomain(t.domain) !== String(domainFilter)) return false;
@@ -519,7 +538,7 @@ export default function AdminIdCardsCertificatesPage(){
           <div className="flex justify-between items-center">
             <h1 className="text-3xl font-bold text-gitam-700">ID Card & Certificates - Admin</h1>
             <button
-              onClick={() => router.push('/admin/dashboard')}
+              onClick={() => router.push(isSpocView ? '/spoc/dashboard' : '/admin/dashboard')}
               className="hh-btn-outline px-4 py-2 border-2"
             >
               ← Back to dashboard

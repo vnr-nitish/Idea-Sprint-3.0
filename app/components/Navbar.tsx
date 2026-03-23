@@ -5,14 +5,17 @@ import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getSupabaseClient } from '@/lib/supabaseClient';
+import { clearStoredSpocUser, isSpocLoggedIn } from '@/lib/spocSession';
 
 export default function Navbar() {
   const router = useRouter();
   const pathname = usePathname();
   const [loggedIn, setLoggedIn] = useState(false);
   const [adminLoggedIn, setAdminLoggedIn] = useState(false);
+  const [spocLoggedIn, setSpocLoggedIn] = useState(false);
 
   const isAdminRoute = (pathname || '').startsWith('/admin');
+  const isSpocRoute = (pathname || '').startsWith('/spoc');
   const isMemberRoute = (pathname || '').startsWith('/dashboard');
   const isDashboardSubRoute = (pathname || '').startsWith('/dashboard/');
   const showAuthButtons = (pathname || '') === '/';
@@ -30,6 +33,12 @@ export default function Navbar() {
       setAdminLoggedIn(!!a);
     } catch (e) {
       setAdminLoggedIn(false);
+    }
+
+    try {
+      setSpocLoggedIn(isSpocLoggedIn());
+    } catch (e) {
+      setSpocLoggedIn(false);
     }
 
     try {
@@ -57,6 +66,12 @@ export default function Navbar() {
       } catch (e) {
         setAdminLoggedIn(false);
       }
+
+      try {
+        setSpocLoggedIn(isSpocLoggedIn());
+      } catch (e) {
+        setSpocLoggedIn(false);
+      }
     };
     window.addEventListener('storage', onStorage);
     return () => window.removeEventListener('storage', onStorage);
@@ -74,19 +89,22 @@ export default function Navbar() {
       localStorage.removeItem('currentTeam');
       localStorage.removeItem('adminLoggedIn');
       localStorage.removeItem('adminUser');
+      clearStoredSpocUser();
     } catch (e) {
       // ignore
     }
 
     setLoggedIn(false);
     setAdminLoggedIn(false);
+    setSpocLoggedIn(false);
     router.push('/');
   };
 
-  const isAnyLoggedIn = loggedIn || adminLoggedIn;
+  const isAnyLoggedIn = loggedIn || adminLoggedIn || spocLoggedIn;
 
   const homeHref = (() => {
     if (isAdminRoute || adminLoggedIn) return '/admin/dashboard';
+    if (isSpocRoute || spocLoggedIn) return '/spoc/dashboard';
     if (isMemberRoute || loggedIn) return '/dashboard';
     return '/';
   })();
@@ -109,6 +127,12 @@ export default function Navbar() {
                   className="hh-btn-outline"
                 >
                   Login
+                </Link>
+                <Link
+                  href="/spoc"
+                  className="hh-btn-outline"
+                >
+                  SPOC Login
                 </Link>
                 <Link
                   href="/register"
