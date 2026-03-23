@@ -87,6 +87,17 @@ const sameDraftValues = (left?: ReportingAssignment, right?: ReportingAssignment
   return a.venue === b.venue && a.date === b.date && a.time === b.time;
 };
 
+const canonicalTeamKey = (teamName: string) => String(teamName || '').trim().toLowerCase();
+
+const buildAssignmentIndex = (map: Record<string, ReportingAssignment>) => {
+  const index: Record<string, ReportingAssignment> = {};
+  Object.entries(map || {}).forEach(([teamName, assignment]) => {
+    const key = canonicalTeamKey(teamName);
+    if (key) index[key] = assignment;
+  });
+  return index;
+};
+
 const mergeAssignmentsSafely = (
   localAssignments: Record<string, ReportingAssignment>,
   remoteAssignments: Record<string, ReportingAssignment>,
@@ -128,6 +139,8 @@ export default function AdminReportingPage() {
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
   const lastLocalSaveAtRef = useRef<number>(0);
+  const assignmentsIndexRef = useRef<Record<string, ReportingAssignment>>({});
+  assignmentsIndexRef.current = buildAssignmentIndex(assignments);
 
   const [campusFilter, setCampusFilter] = useState<string>('All');
   const [domainFilter, setDomainFilter] = useState<string>('All');
@@ -168,14 +181,17 @@ export default function AdminReportingPage() {
     latestAssignments: Record<string, ReportingAssignment>,
     previousDrafts?: Record<string, ReportingAssignment>,
   ) => {
+    const assignmentIndex = buildAssignmentIndex(latestAssignments || {});
+    const currentIndex = assignmentsIndexRef.current || {};
     const nextDrafts: Record<string, ReportingAssignment> = {};
     (rows || []).forEach((t: any) => {
       const teamName = String(t?.teamName || '');
       if (!teamName) return;
 
-      const saved = latestAssignments?.[teamName] || {};
+      const saved = latestAssignments?.[teamName] || assignmentIndex[canonicalTeamKey(teamName)] || {};
       const previous = previousDrafts?.[teamName];
-      const keepPrevious = previous && !sameDraftValues(previous, assignmentsRef.current?.[teamName]);
+      const currentSaved = assignmentsRef.current?.[teamName] || currentIndex[canonicalTeamKey(teamName)] || {};
+      const keepPrevious = previous && !sameDraftValues(previous, currentSaved);
 
       nextDrafts[teamName] = keepPrevious
         ? normalizeAssignmentDraft(previous)
@@ -321,7 +337,7 @@ export default function AdminReportingPage() {
   const uniqueVenues = useMemo(() => {
     const venues = normalizedTeams
       .map((t) => {
-        const saved = assignments[t.teamName] || {};
+        const saved = assignments[t.teamName] || assignmentsIndexRef.current[canonicalTeamKey(t.teamName)] || {};
         return String(saved.venue || '');
       })
       .filter(Boolean);
@@ -331,7 +347,7 @@ export default function AdminReportingPage() {
   const uniqueSpocs = useMemo(() => {
     const spocs = normalizedTeams
       .map((t) => {
-        const saved = assignments[t.teamName] || {};
+        const saved = assignments[t.teamName] || assignmentsIndexRef.current[canonicalTeamKey(t.teamName)] || {};
         return String(saved.spoc?.name || '');
       })
       .filter(Boolean);
@@ -356,11 +372,11 @@ export default function AdminReportingPage() {
       if (domainFilter !== 'All' && t.domain !== domainFilter) return false;
       if (teamSizeFilter !== 'All' && String(t.teamSize) !== teamSizeFilter) return false;
       if (venueFilter !== 'All') {
-        const saved = assignments[t.teamName] || {};
+        const saved = assignments[t.teamName] || assignmentsIndexRef.current[canonicalTeamKey(t.teamName)] || {};
         if (String(saved.venue || '') !== venueFilter) return false;
       }
       if (spocFilter !== 'All') {
-        const saved = assignments[t.teamName] || {};
+        const saved = assignments[t.teamName] || assignmentsIndexRef.current[canonicalTeamKey(t.teamName)] || {};
         if (String(saved.spoc?.name || '') !== spocFilter) return false;
       }
       if (attendanceFilter !== 'All') {
@@ -437,7 +453,7 @@ export default function AdminReportingPage() {
   };
 
   const cancelEdit = (teamName: string) => {
-    const saved = assignments[teamName] || {};
+    const saved = assignments[teamName] || assignmentsIndexRef.current[canonicalTeamKey(teamName)] || {};
     setDrafts((prev) => ({
       ...prev,
       [teamName]: {
@@ -455,15 +471,17 @@ export default function AdminReportingPage() {
     const venue = String(d.venue || '').trim();
     const date = String(d.date || '').trim();
     const time = String(d.time || '').trim();
+    const canonicalName = String(teamName || '').trim();
 
-    if (!venue || !date || !time) return;
+    if (!canonicalName || !venue || !date || !time) return;
 
     const current = readLocalJSON<Record<string, ReportingAssignment>>('reportingAssignments', {});
-    const existing = current?.[teamName] || {};
+    const currentIndex = buildAssignmentIndex(current || {});
+    const existing = current?.[canonicalName] || current?.[teamName] || currentIndex[canonicalTeamKey(canonicalName)] || {};
 
     const next: Record<string, ReportingAssignment> = {
       ...(current || {}),
-      [teamName]: {
+      [canonicalName]: {
         ...existing,
         venue,
         date,
@@ -471,6 +489,9 @@ export default function AdminReportingPage() {
         updatedAt: new Date().toISOString(),
       },
     };
+    if (teamName !== canonicalName) {
+      delete next[teamName];
+    }
 
     try {
       lastLocalSaveAtRef.current = Date.now();
@@ -503,7 +524,7 @@ export default function AdminReportingPage() {
 
   const assignedTeams = useMemo(() => {
     return filteredTeams.filter((t) => {
-      const saved = assignments[t.teamName] || {};
+      const saved = assignments[t.teamName] || assignmentsIndexRef.current[canonicalTeamKey(t.teamName)] || {};
       return !!(saved.venue && saved.date && saved.time);
     });
   }, [filteredTeams, assignments]);
@@ -558,14 +579,20 @@ export default function AdminReportingPage() {
     Object.entries(selected)
       .filter(([, isSelected]) => !!isSelected)
       .forEach(([teamName]) => {
-        const existing = next[teamName] || {};
-        next[teamName] = {
+        const canonicalName = String(teamName || '').trim();
+        if (!canonicalName) return;
+        const currentIndex = buildAssignmentIndex(next);
+        const existing = next[canonicalName] || next[teamName] || currentIndex[canonicalTeamKey(canonicalName)] || {};
+        next[canonicalName] = {
           ...existing,
           venue,
           date,
           time,
           updatedAt: now,
         };
+        if (teamName !== canonicalName) {
+          delete next[teamName];
+        }
       });
 
     try {
@@ -769,7 +796,7 @@ export default function AdminReportingPage() {
               ) : (
                 filteredTeams.map((t) => {
                   const draft = drafts[t.teamName] || {};
-                  const saved = assignments[t.teamName] || {};
+                  const saved = assignments[t.teamName] || assignmentsIndexRef.current[canonicalTeamKey(t.teamName)] || {};
                   const assigned = !!(saved.venue && saved.date && saved.time);
                   const isEditing = !!editing[t.teamName];
                   const locked = assigned && !isEditing;
