@@ -87,6 +87,30 @@ const sameDraftValues = (left?: ReportingAssignment, right?: ReportingAssignment
   return a.venue === b.venue && a.date === b.date && a.time === b.time;
 };
 
+const mergeAssignmentsSafely = (
+  localAssignments: Record<string, ReportingAssignment>,
+  remoteAssignments: Record<string, ReportingAssignment>,
+): Record<string, ReportingAssignment> => {
+  const merged: Record<string, ReportingAssignment> = { ...(localAssignments || {}) };
+  Object.entries(remoteAssignments || {}).forEach(([teamName, remote]) => {
+    const local = merged[teamName] || {};
+    merged[teamName] = {
+      ...local,
+      ...remote,
+      venue: String(remote?.venue || local?.venue || ''),
+      date: String(remote?.date || local?.date || ''),
+      time: String(remote?.time || local?.time || ''),
+      spoc: {
+        name: String(remote?.spoc?.name || local?.spoc?.name || ''),
+        email: String(remote?.spoc?.email || local?.spoc?.email || ''),
+        phone: String(remote?.spoc?.phone || local?.spoc?.phone || ''),
+      },
+      updatedAt: String(remote?.updatedAt || local?.updatedAt || ''),
+    };
+  });
+  return merged;
+};
+
 export default function AdminReportingPage() {
   const router = useRouter();
   const [ok, setOk] = useState(false);
@@ -103,6 +127,7 @@ export default function AdminReportingPage() {
   assignmentsRef.current = assignments;
   const draftsRef = useRef(drafts);
   draftsRef.current = drafts;
+  const lastLocalSaveAtRef = useRef<number>(0);
 
   const [campusFilter, setCampusFilter] = useState<string>('All');
   const [domainFilter, setDomainFilter] = useState<string>('All');
@@ -196,16 +221,17 @@ export default function AdminReportingPage() {
       }
       setTeams(Array.isArray(rows) ? rows : []);
 
-      let latestAssignments: Record<string, ReportingAssignment> = readLocalJSON<Record<string, ReportingAssignment>>('reportingAssignments', {});
+      const localAssignments = readLocalJSON<Record<string, ReportingAssignment>>('reportingAssignments', {});
+      let latestAssignments: Record<string, ReportingAssignment> = localAssignments;
       setAssignments(latestAssignments || {});
 
       if (isSupabaseConfigured()) {
         try {
           const remoteAssignments = await listReportingAssignments();
-          if (remoteAssignments && Object.keys(remoteAssignments).length) {
-            latestAssignments = remoteAssignments as Record<string, ReportingAssignment>;
+          if (remoteAssignments && typeof remoteAssignments === 'object') {
+            latestAssignments = mergeAssignmentsSafely(localAssignments, remoteAssignments as Record<string, ReportingAssignment>);
             setAssignments(latestAssignments);
-            localStorage.setItem('reportingAssignments', JSON.stringify(remoteAssignments));
+            localStorage.setItem('reportingAssignments', JSON.stringify(latestAssignments));
           }
         } catch {
           // Keep local fallback assignments.
@@ -228,6 +254,7 @@ export default function AdminReportingPage() {
       const hasEditing = Object.values(editingRef.current).some(Boolean);
       const hasSelection = Object.values(selectedRef.current).some(Boolean);
       if (hasEditing || hasSelection || hasPendingDraftChanges()) return;
+      if (Date.now() - lastLocalSaveAtRef.current < 8000) return;
 
       void (async () => {
         let rows: any[] | null = null;
@@ -244,13 +271,14 @@ export default function AdminReportingPage() {
         }
         setTeams(Array.isArray(rows) ? rows : []);
 
-        let latestAssignments: Record<string, ReportingAssignment> = readLocalJSON<Record<string, ReportingAssignment>>('reportingAssignments', {});
+        const localAssignments = readLocalJSON<Record<string, ReportingAssignment>>('reportingAssignments', {});
+        let latestAssignments: Record<string, ReportingAssignment> = localAssignments;
         if (isSupabaseConfigured()) {
           try {
             const remote = await listReportingAssignments();
             if (remote && typeof remote === 'object') {
-              latestAssignments = remote as Record<string, ReportingAssignment>;
-              localStorage.setItem('reportingAssignments', JSON.stringify(remote));
+              latestAssignments = mergeAssignmentsSafely(localAssignments, remote as Record<string, ReportingAssignment>);
+              localStorage.setItem('reportingAssignments', JSON.stringify(latestAssignments));
             }
           } catch {
             // keep local fallback
@@ -445,6 +473,7 @@ export default function AdminReportingPage() {
     };
 
     try {
+      lastLocalSaveAtRef.current = Date.now();
       localStorage.setItem('reportingAssignments', JSON.stringify(next));
       setAssignments(next);
       dispatchReportingAssignmentsUpdate(next);
@@ -540,6 +569,7 @@ export default function AdminReportingPage() {
       });
 
     try {
+      lastLocalSaveAtRef.current = Date.now();
       localStorage.setItem('reportingAssignments', JSON.stringify(next));
       setAssignments(next);
       dispatchReportingAssignmentsUpdate(next);
