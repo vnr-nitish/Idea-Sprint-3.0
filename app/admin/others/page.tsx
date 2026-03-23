@@ -2,12 +2,22 @@
 
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
+import { useEffect } from 'react';
 import { OTHER_LINKS } from '@/lib/otherLinks';
 
 export default function AdminOthersPage() {
   const router = useRouter();
   const pathname = usePathname();
   const isSpocView = (pathname || '').startsWith('/spoc');
+
+  useEffect(() => {
+    const navbar = document.querySelector('nav');
+    if (navbar) (navbar as HTMLElement).style.display = 'none';
+    return () => {
+      const nav = document.querySelector('nav');
+      if (nav) (nav as HTMLElement).style.display = '';
+    };
+  }, []);
 
   const openLink = (title: string, url: string) => {
     if (!url) {
