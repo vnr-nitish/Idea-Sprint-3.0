@@ -129,12 +129,6 @@ export default function Navbar() {
                   Login
                 </Link>
                 <Link
-                  href="/spoc"
-                  className="hh-btn-outline"
-                >
-                  SPOC Login
-                </Link>
-                <Link
                   href="/register"
                   onMouseEnter={() => router.prefetch('/register')}
                   className="hh-btn"

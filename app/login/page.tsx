@@ -4,6 +4,33 @@ import { FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { loginWithIdentifierAndPassword } from '@/lib/teamsBackend';
+import { listReportingSpocs } from '@/lib/reportingBackend';
+import { setStoredSpocUser } from '@/lib/spocSession';
+import { ensureDefaultSpocs } from '@/lib/spocDefaults';
+
+type SpocRecord = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+};
+
+const readLocalSpocs = (): SpocRecord[] => {
+  try {
+    const raw = JSON.parse(localStorage.getItem('reportingSpocs') || '[]');
+    if (!Array.isArray(raw)) return [];
+    return raw
+      .map((s: any) => ({
+        id: String(s?.id || '').trim(),
+        name: String(s?.name || '').trim(),
+        email: String(s?.email || '').trim().toLowerCase(),
+        phone: String(s?.phone || '').trim(),
+      }))
+      .filter((s) => s.id && s.email);
+  } catch {
+    return [];
+  }
+};
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
@@ -166,6 +193,8 @@ export default function LoginPage() {
       const ADMIN_USER = 'tcd_gcgc@gitam.edu';
       const ADMIN_PASS = 'TCD#GITAM@123';
       const idRaw = normalizeId(formData.identifier);
+      const emailRaw = String(formData.identifier || '').trim().toLowerCase();
+      const passwordRaw = String(formData.password || '').trim();
 
       // If Supabase is configured, try Auth-based login first.
       if (isSupabaseConfigured()) {
@@ -180,6 +209,36 @@ export default function LoginPage() {
           try { localStorage.setItem('adminLoggedIn', '1'); localStorage.setItem('adminUser', JSON.stringify({ user: ADMIN_USER })); } catch (e) {}
           window.location.href = '/admin/dashboard';
           return;
+        }
+
+        // SPOC login via reporting SPOC records (password stored in phone field).
+        try {
+          let spocs: SpocRecord[] = ensureDefaultSpocs(readLocalSpocs());
+          const remoteSpocs = await listReportingSpocs();
+          if (Array.isArray(remoteSpocs) && remoteSpocs.length) {
+            const remoteMapped = remoteSpocs.map((s: any) => ({
+              id: String(s?.id || '').trim(),
+              name: String(s?.name || '').trim(),
+              email: String(s?.email || '').trim().toLowerCase(),
+              phone: String(s?.phone || '').trim(),
+            }));
+            spocs = ensureDefaultSpocs(remoteMapped);
+          }
+          localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
+
+          const matchedSpoc = spocs.find((s) => s.email === emailRaw);
+          if (matchedSpoc && passwordRaw && passwordRaw === String(matchedSpoc.phone || '').trim()) {
+            setStoredSpocUser({
+              id: matchedSpoc.id,
+              name: matchedSpoc.name,
+              email: matchedSpoc.email,
+              phone: matchedSpoc.phone,
+            });
+            window.location.href = '/spoc/dashboard';
+            return;
+          }
+        } catch (e) {
+          console.warn(e);
         }
 
         try {
@@ -209,6 +268,26 @@ export default function LoginPage() {
         window.location.href = '/admin/dashboard';
         return;
       }
+
+      // SPOC login fallback from local storage records.
+      try {
+        const spocs: SpocRecord[] = ensureDefaultSpocs(readLocalSpocs());
+        localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
+        const matchedSpoc = spocs.find((s) => s.email === emailRaw);
+        if (matchedSpoc && passwordRaw && passwordRaw === String(matchedSpoc.phone || '').trim()) {
+          setStoredSpocUser({
+            id: matchedSpoc.id,
+            name: matchedSpoc.name,
+            email: matchedSpoc.email,
+            phone: matchedSpoc.phone,
+          });
+          window.location.href = '/spoc/dashboard';
+          return;
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+
       let registered = [];
       try { registered = JSON.parse(localStorage.getItem('registeredTeams') || '[]'); } catch { registered = []; }
       const id = normalizeId(formData.identifier);

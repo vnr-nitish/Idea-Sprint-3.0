@@ -11,6 +11,7 @@ import {
   upsertManyReportingAssignments,
   upsertReportingSpocs,
 } from '@/lib/reportingBackend';
+import { ensureDefaultSpocs } from '@/lib/spocDefaults';
 
 type Spoc = {
   id: string;
@@ -193,10 +194,14 @@ export default function AdminSpocPage() {
     }
 
     (async () => {
-      const localSpocs = readJson<Spoc[]>(SPOCS_KEY, []);
+      const localSpocs = ensureDefaultSpocs(readJson<Spoc[]>(SPOCS_KEY, []));
       const localAssignments = readJson<Record<string, ReportingAssignment>>(ASSIGNMENTS_KEY, {});
       setSpocs(localSpocs);
       setAssignments(localAssignments);
+      writeJson(SPOCS_KEY, localSpocs);
+      if (isSupabaseConfigured()) {
+        void upsertReportingSpocs(localSpocs as any[]);
+      }
 
       if (isSupabaseConfigured()) {
         try {
@@ -206,8 +211,10 @@ export default function AdminSpocPage() {
           ]);
 
           if (Array.isArray(remoteSpocs) && remoteSpocs.length) {
-            setSpocs(remoteSpocs as Spoc[]);
-            writeJson(SPOCS_KEY, remoteSpocs);
+            const mergedSpocs = ensureDefaultSpocs(remoteSpocs as Spoc[]);
+            setSpocs(mergedSpocs as Spoc[]);
+            writeJson(SPOCS_KEY, mergedSpocs);
+            void upsertReportingSpocs(mergedSpocs as any[]);
           }
           if (remoteAssignments && typeof remoteAssignments === 'object') {
             const merged = mergeAssignmentsSafely(localAssignments, remoteAssignments as Record<string, ReportingAssignment>);
@@ -263,7 +270,7 @@ export default function AdminSpocPage() {
         }
 
         setTeams(readJson<any[]>('registeredTeams', []));
-        setSpocs(readJson<Spoc[]>(SPOCS_KEY, []));
+        setSpocs(ensureDefaultSpocs(readJson<Spoc[]>(SPOCS_KEY, [])) as Spoc[]);
         setAssignments(readJson<Record<string, ReportingAssignment>>(ASSIGNMENTS_KEY, {}));
       })();
     }, 2000);
