@@ -94,6 +94,44 @@ export default function TeamProfilesPage() {
     return String(value);
   };
 
+  const canonicalTeamKey = (teamName: string) => String(teamName || '').trim().toLowerCase();
+
+  const buildReportingAssignmentsIndex = (map: Record<string, any>) => {
+    const index: Record<string, any> = {};
+    Object.entries(map || {}).forEach(([teamName, assignment]) => {
+      const key = canonicalTeamKey(teamName);
+      if (key) index[key] = assignment;
+    });
+    return index;
+  };
+
+  const mergeReportingAssignmentsSafely = (
+    localAssignments: Record<string, any>,
+    remoteAssignments: Record<string, any>,
+  ): Record<string, any> => {
+    const merged: Record<string, any> = { ...(localAssignments || {}) };
+    Object.entries(remoteAssignments || {}).forEach(([teamName, remote]) => {
+      const key = canonicalTeamKey(teamName);
+      const localMatchKey = Object.keys(merged).find((k) => canonicalTeamKey(k) === key) || '';
+      const local = merged[teamName] || merged[localMatchKey] || {};
+      merged[teamName] = {
+        ...local,
+        ...remote,
+        venue: String(remote?.venue || local?.venue || ''),
+        date: String(remote?.date || local?.date || ''),
+        time: String(remote?.time || local?.time || ''),
+        spoc: {
+          name: String(remote?.spoc?.name || local?.spoc?.name || ''),
+          email: String(remote?.spoc?.email || local?.spoc?.email || ''),
+          phone: String(remote?.spoc?.phone || local?.spoc?.phone || ''),
+        },
+      };
+    });
+    return merged;
+  };
+
+  const reportingAssignmentsIndex = buildReportingAssignmentsIndex(reportingAssignmentsMap);
+
   const reloadRegistered = async () => {
     try {
       if (isSupabaseConfigured()) {
@@ -144,9 +182,11 @@ export default function TeamProfilesPage() {
     } catch {}
 
     // Load reporting assignment map for venue/SPOC display in tables and filters.
+    let localReportingAssignments: Record<string, any> = {};
     try {
       const map = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
       if (map && typeof map === 'object') {
+        localReportingAssignments = map;
         setReportingAssignmentsMap(map);
       }
     } catch {}
@@ -155,9 +195,10 @@ export default function TeamProfilesPage() {
       void (async () => {
         try {
           const remoteAssignments = await listReportingAssignments();
-          if (remoteAssignments && typeof remoteAssignments === 'object' && Object.keys(remoteAssignments).length) {
-            setReportingAssignmentsMap(remoteAssignments as Record<string, any>);
-            localStorage.setItem('reportingAssignments', JSON.stringify(remoteAssignments));
+          if (remoteAssignments && typeof remoteAssignments === 'object') {
+            const merged = mergeReportingAssignmentsSafely(localReportingAssignments, remoteAssignments as Record<string, any>);
+            setReportingAssignmentsMap(merged);
+            localStorage.setItem('reportingAssignments', JSON.stringify(merged));
           }
         } catch {
           // Keep local fallback.
@@ -166,6 +207,22 @@ export default function TeamProfilesPage() {
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== 'reportingAssignments') return;
+      try {
+        const map = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
+        if (map && typeof map === 'object') {
+          setReportingAssignmentsMap(map);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
   }, []);
 
   useEffect(() => {
@@ -519,15 +576,20 @@ export default function TeamProfilesPage() {
     return String(assignment?.spoc?.name || assignment?.name || '').trim();
   };
 
+  const getReportingAssignmentForTeam = (teamName: string): any => {
+    const trimmed = String(teamName || '').trim();
+    return reportingAssignmentsMap[trimmed] || reportingAssignmentsIndex[canonicalTeamKey(trimmed)] || {};
+  };
+
   const getSpocForTeam = (teamName: string): string => {
-    const assignment = reportingAssignmentsMap[String(teamName || '').trim()] || {};
+    const assignment = getReportingAssignmentForTeam(teamName);
     const spocName = getSpocNameFromAssignment(assignment);
     return spocName || '-';
   };
 
   const getVenueForTeam = (team: any): string => {
     const teamName = String(team?.teamName || '').trim();
-    const reportingVenue = String(reportingAssignmentsMap?.[teamName]?.venue || '').trim();
+    const reportingVenue = String(getReportingAssignmentForTeam(teamName)?.venue || '').trim();
     if (reportingVenue) return reportingVenue;
     return String(team?.venue || team?.zone || '').trim();
   };

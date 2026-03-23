@@ -63,6 +63,44 @@ const writeJson = (key: string, value: any) => {
   }
 };
 
+const canonicalTeamKey = (teamName: string) => String(teamName || '').trim().toLowerCase();
+
+const buildAssignmentIndex = (map: Record<string, ReportingAssignment>) => {
+  const index: Record<string, ReportingAssignment> = {};
+  Object.entries(map || {}).forEach(([teamName, assignment]) => {
+    const key = canonicalTeamKey(teamName);
+    if (key) index[key] = assignment;
+  });
+  return index;
+};
+
+const mergeAssignmentsSafely = (
+  localAssignments: Record<string, ReportingAssignment>,
+  remoteAssignments: Record<string, ReportingAssignment>,
+): Record<string, ReportingAssignment> => {
+  const merged: Record<string, ReportingAssignment> = { ...(localAssignments || {}) };
+  Object.entries(remoteAssignments || {}).forEach(([teamName, remote]) => {
+    const key = canonicalTeamKey(teamName);
+    const localMatchKey = Object.keys(merged).find((k) => canonicalTeamKey(k) === key) || '';
+    const local = merged[teamName] || merged[localMatchKey] || {};
+    merged[teamName] = {
+      ...local,
+      ...remote,
+      venue: String(remote?.venue || local?.venue || ''),
+      date: String(remote?.date || local?.date || ''),
+      time: String(remote?.time || local?.time || ''),
+      spocId: String(remote?.spocId || local?.spocId || '').trim() || undefined,
+      spoc: {
+        name: String(remote?.spoc?.name || local?.spoc?.name || ''),
+        email: String(remote?.spoc?.email || local?.spoc?.email || ''),
+        phone: String(remote?.spoc?.phone || local?.spoc?.phone || ''),
+      },
+      updatedAt: String(remote?.updatedAt || local?.updatedAt || ''),
+    };
+  });
+  return merged;
+};
+
 const normalizeEmail = (s: string) => String(s || '').trim().toLowerCase();
 
 const nextSpocId = (spocs: Spoc[]) => {
@@ -171,9 +209,10 @@ export default function AdminSpocPage() {
             setSpocs(remoteSpocs as Spoc[]);
             writeJson(SPOCS_KEY, remoteSpocs);
           }
-          if (remoteAssignments && Object.keys(remoteAssignments).length) {
-            setAssignments(remoteAssignments as Record<string, ReportingAssignment>);
-            writeJson(ASSIGNMENTS_KEY, remoteAssignments);
+          if (remoteAssignments && typeof remoteAssignments === 'object') {
+            const merged = mergeAssignmentsSafely(localAssignments, remoteAssignments as Record<string, ReportingAssignment>);
+            setAssignments(merged);
+            writeJson(ASSIGNMENTS_KEY, merged);
           }
         } catch {
           // Keep local fallback.
@@ -212,8 +251,10 @@ export default function AdminSpocPage() {
               writeJson(SPOCS_KEY, remoteSpocs);
             }
             if (remoteAssignments && typeof remoteAssignments === 'object') {
-              setAssignments(remoteAssignments as Record<string, ReportingAssignment>);
-              writeJson(ASSIGNMENTS_KEY, remoteAssignments);
+              const localAssignments = readJson<Record<string, ReportingAssignment>>(ASSIGNMENTS_KEY, {});
+              const merged = mergeAssignmentsSafely(localAssignments, remoteAssignments as Record<string, ReportingAssignment>);
+              setAssignments(merged);
+              writeJson(ASSIGNMENTS_KEY, merged);
             }
             return;
           }
@@ -267,8 +308,16 @@ export default function AdminSpocPage() {
     return m;
   }, [spocs]);
 
+  const assignmentsIndex = useMemo(() => buildAssignmentIndex(assignments), [assignments]);
+
+  const getAssignmentForTeam = useCallback((teamName: string): ReportingAssignment => {
+    const direct = assignments?.[teamName];
+    if (direct) return direct;
+    return assignmentsIndex[canonicalTeamKey(teamName)] || {};
+  }, [assignments, assignmentsIndex]);
+
   const getZoneForTeam = (teamName: string) => {
-    return assignments?.[teamName]?.venue || '-';
+    return getAssignmentForTeam(teamName)?.venue || '-';
   };
 
   const getTeamAttendance = (teamName: string): string => {
@@ -316,13 +365,14 @@ export default function AdminSpocPage() {
   }, [teams, assignments]);
 
   const getSpocNameForTeam = useCallback((teamName: string): string => {
-    const assignedId = String(draftAssignments[teamName] || assignments?.[teamName]?.spocId || '').trim();
+    const saved = getAssignmentForTeam(teamName);
+    const assignedId = String(draftAssignments[teamName] || saved?.spocId || '').trim();
     if (assignedId) {
       const byId = spocById.get(assignedId);
       if (byId?.name) return byId.name;
     }
-    return String(assignments?.[teamName]?.spoc?.name || '').trim() || '-';
-  }, [draftAssignments, assignments, spocById]);
+    return String(saved?.spoc?.name || '').trim() || '-';
+  }, [draftAssignments, getAssignmentForTeam, spocById]);
 
   const spocOptions = useMemo(() => {
     const names = teams
