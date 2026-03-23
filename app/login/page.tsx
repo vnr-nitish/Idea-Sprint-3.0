@@ -14,6 +14,17 @@ type SpocRecord = {
   phone: string;
 };
 
+const SPOC_PASSWORD_BY_EMAIL: Record<string, string> = {
+  'smathala@gitam.in': 'Sindhu$538',
+  'ethottem@gitam.in': 'Eesha@457',
+  'baripill@gitam.in': 'Bhavana#914',
+  'aakanksh@gitam.in': 'Akanksha$051',
+  'sgurugub@gitam.in': 'Sathwik@889',
+  'anistala@gitam.in': 'Anuradha$792',
+  'mdwarapu2@gitam.in': 'Monisha&638',
+  'sjoseph@student.gitam.edu': 'Step$029',
+};
+
 const readLocalSpocs = (): SpocRecord[] => {
   try {
     const raw = JSON.parse(localStorage.getItem('reportingSpocs') || '[]');
@@ -38,6 +49,15 @@ const buildSpocPassword = (name: string, phone: string) => {
   const compactName = String(name || '').replace(/\s+/g, '');
   const phoneDigits = String(phone || '').replace(/\D/g, '');
   return `${compactName}${phoneDigits}`.toLowerCase();
+};
+
+const isValidSpocPassword = (spoc: SpocRecord, inputPassword: string) => {
+  const email = String(spoc?.email || '').trim().toLowerCase();
+  const custom = SPOC_PASSWORD_BY_EMAIL[email];
+  if (typeof custom === 'string') {
+    return String(inputPassword || '').trim() === custom;
+  }
+  return normalizeSpocPasswordInput(inputPassword) === buildSpocPassword(String(spoc?.name || ''), String(spoc?.phone || ''));
 };
 
 export default function LoginPage() {
@@ -219,7 +239,7 @@ export default function LoginPage() {
           return;
         }
 
-        // SPOC login via reporting SPOC records (password: NameWithoutSpaces + PhoneNumber).
+        // SPOC login via reporting SPOC records.
         try {
           let spocs: SpocRecord[] = readLocalSpocs();
           const remoteSpocs = await listReportingSpocs();
@@ -238,8 +258,7 @@ export default function LoginPage() {
           if (
             matchedSpoc
             && passwordRaw
-            && normalizeSpocPasswordInput(passwordRaw)
-              === buildSpocPassword(String(matchedSpoc.name || ''), String(matchedSpoc.phone || ''))
+            && isValidSpocPassword(matchedSpoc, passwordRaw)
           ) {
             setStoredSpocUser({
               id: matchedSpoc.id,
@@ -290,8 +309,7 @@ export default function LoginPage() {
         if (
           matchedSpoc
           && passwordRaw
-          && normalizeSpocPasswordInput(passwordRaw)
-            === buildSpocPassword(String(matchedSpoc.name || ''), String(matchedSpoc.phone || ''))
+          && isValidSpocPassword(matchedSpoc, passwordRaw)
         ) {
           setStoredSpocUser({
             id: matchedSpoc.id,
