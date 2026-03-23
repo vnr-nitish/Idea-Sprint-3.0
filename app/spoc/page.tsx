@@ -13,6 +13,34 @@ type SpocRecord = {
   phone: string;
 };
 
+const TEST_SPOC: SpocRecord = {
+  id: 'SPOC1',
+  name: 'Spoc One',
+  email: 'spoc.one@hackhub.test',
+  phone: 'SpocOne@7391',
+};
+
+const mergeSpocs = (list: SpocRecord[]): SpocRecord[] => {
+  const byId = new Map<string, SpocRecord>();
+  (list || []).forEach((s) => {
+    const id = String(s?.id || '').trim();
+    const email = String(s?.email || '').trim().toLowerCase();
+    if (!id || !email) return;
+    byId.set(id, {
+      id,
+      name: String(s?.name || '').trim(),
+      email,
+      phone: String(s?.phone || '').trim(),
+    });
+  });
+
+  if (!Array.from(byId.values()).some((s) => s.email === TEST_SPOC.email)) {
+    byId.set(TEST_SPOC.id, TEST_SPOC);
+  }
+
+  return Array.from(byId.values());
+};
+
 const readLocalSpocs = (): SpocRecord[] => {
   try {
     const raw = JSON.parse(localStorage.getItem('reportingSpocs') || '[]');
@@ -39,6 +67,12 @@ export default function SpocLoginPage() {
 
   useEffect(() => {
     clearStoredSpocUser();
+    try {
+      const seeded = mergeSpocs(readLocalSpocs());
+      localStorage.setItem('reportingSpocs', JSON.stringify(seeded));
+    } catch {
+      // ignore
+    }
   }, []);
 
   const submit = async (e: React.FormEvent) => {
@@ -47,17 +81,18 @@ export default function SpocLoginPage() {
     setErr(null);
 
     try {
-      let spocs: SpocRecord[] = readLocalSpocs();
+      let spocs: SpocRecord[] = mergeSpocs(readLocalSpocs());
       if (isSupabaseConfigured()) {
         try {
           const remote = await listReportingSpocs();
           if (Array.isArray(remote) && remote.length) {
-            spocs = remote.map((s: any) => ({
+            const remoteMapped = remote.map((s: any) => ({
               id: String(s?.id || '').trim(),
               name: String(s?.name || '').trim(),
               email: String(s?.email || '').trim().toLowerCase(),
               phone: String(s?.phone || '').trim(),
             }));
+            spocs = mergeSpocs(remoteMapped);
             localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
           }
         } catch {
