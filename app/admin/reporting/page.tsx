@@ -22,7 +22,18 @@ type ReportingAssignment = {
   updatedAt?: string;
 };
 
-const VENUE_OPTIONS = ['Shivaji Auditorium', 'Zone-1', 'Zone-2', 'Zone-3', 'Zone-4', 'Zone-5'];
+const VENUE_OPTIONS = [
+  'Shivaji Auditorium',
+  'ICT 105',
+  'ICT 106',
+  'ICT 107',
+  'ICT 111',
+  'ICT 112',
+  'ICT 113',
+  'ICT 118',
+  'ICT 119',
+  'ICT 122',
+];
 const DOMAIN_OPTIONS = ['App Development', 'Cyber Security', 'AI', 'ML & DS'];
 
 const readLocalJSON = <T,>(key: string, fallback: T): T => {
