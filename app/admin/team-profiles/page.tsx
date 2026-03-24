@@ -1,6 +1,6 @@
  'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -28,10 +28,13 @@ export default function TeamProfilesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTab, setSelectedTab] = useState<'teams'|'individuals'>('teams');
   const [attendanceFilter, setAttendanceFilter] = useState('All');
+  const [daybreakFilter, setDaybreakFilter] = useState('All');
   const [teamAttendance, setTeamAttendance] = useState<Record<string, string>>({});
   const [memberAttendance, setMemberAttendance] = useState<Record<string, string>>({});
+  const [memberDaybreak, setMemberDaybreak] = useState<Record<string, string>>({});
   const [draftTeamAttendance, setDraftTeamAttendance] = useState<Record<string, string>>({});
   const [draftMemberAttendance, setDraftMemberAttendance] = useState<Record<string, string>>({});
+  const [draftMemberDaybreak, setDraftMemberDaybreak] = useState<Record<string, string>>({});
   const [venueFilter, setVenueFilter] = useState('All');
   const [spocFilter, setSpocFilter] = useState('All');
   const [teamLeadOverrides, setTeamLeadOverrides] = useState<Record<string, string>>({});
@@ -152,7 +155,20 @@ export default function TeamProfilesPage() {
     ? filterTeamsForSpoc(registered, reportingAssignmentsMap, spocUser)
     : registered;
 
-  const reloadRegistered = async () => {
+  const readTeamFallback = () => {
+    try {
+      const cached = JSON.parse(localStorage.getItem('registeredTeamsSupabaseCache') || '[]');
+      if (Array.isArray(cached) && cached.length) return cached;
+    } catch {}
+    try {
+      const reg = JSON.parse(localStorage.getItem('registeredTeams') || '[]');
+      return Array.isArray(reg) ? reg : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const reloadRegistered = useCallback(async () => {
     try {
       if (isSupabaseConfigured()) {
         const rows = await listTeamsWithMembers();
@@ -164,8 +180,8 @@ export default function TeamProfilesPage() {
     } catch (e) {
       console.warn(e);
     }
-    try { const reg = JSON.parse(localStorage.getItem('registeredTeams') || '[]'); setRegistered(reg); } catch { setRegistered([]); }
-  };
+    setRegistered(readTeamFallback());
+  }, []);
 
   useEffect(() => {
     reloadRegistered();
@@ -173,6 +189,7 @@ export default function TeamProfilesPage() {
     try {
       const loadedTeamAttendance: Record<string, string> = {};
       const loadedMemberAttendance: Record<string, string> = {};
+      const loadedMemberDaybreak: Record<string, string> = {};
       const teams = JSON.parse(localStorage.getItem('registeredTeams') || '[]');
       teams.forEach((t: any) => {
         const teamKey = `team_attendance_${t.teamName}`;
@@ -187,10 +204,17 @@ export default function TeamProfilesPage() {
           if (memberStored) {
             loadedMemberAttendance[memberKey] = memberStored;
           }
+
+          const daybreakKey = `member_daybreak_${t.teamName}_${m.email || m.registrationNumber || idx}`;
+          const daybreakStored = localStorage.getItem(daybreakKey);
+          if (daybreakStored) {
+            loadedMemberDaybreak[daybreakKey] = daybreakStored;
+          }
         });
       });
       setTeamAttendance(loadedTeamAttendance);
       setMemberAttendance(loadedMemberAttendance);
+      setMemberDaybreak(loadedMemberDaybreak);
     } catch {}
 
     // Load optional per-team lead overrides
@@ -253,7 +277,7 @@ export default function TeamProfilesPage() {
     }, 2000);
 
     return () => clearInterval(poll);
-  }, [editingTeamIndex]);
+  }, [editingTeamIndex, reloadRegistered]);
 
   useEffect(() => {
     if (editingTeamIndex === null || !teamDraft) return;
@@ -583,11 +607,31 @@ export default function TeamProfilesPage() {
     });
   };
 
+  const saveMemberDaybreak = (teamName: string, memberKey: string, value: string) => {
+    if (!value) {
+      alert('Please select a Daybreak status');
+      return;
+    }
+    const key = `member_daybreak_${teamName}_${memberKey}`;
+    localStorage.setItem(key, value);
+    setMemberDaybreak((prev) => ({ ...prev, [key]: value }));
+    setDraftMemberDaybreak((prev) => {
+      const updated = { ...prev };
+      delete updated[key];
+      return updated;
+    });
+  };
+
   const getMemberAttendanceDisplay = (teamName: string, memberKey: string): string => {
     const memberKey_ = `member_attendance_${teamName}_${memberKey}`;
     const memberOverride = memberAttendance[memberKey_];
     if (memberOverride) return memberOverride;
     return teamAttendance[teamName] || '';
+  };
+
+  const getMemberDaybreakDisplay = (teamName: string, memberKey: string): string => {
+    const key = `member_daybreak_${teamName}_${memberKey}`;
+    return memberDaybreak[key] || '';
   };
 
   const getSpocNameFromAssignment = (assignment: any): string => {
@@ -631,10 +675,22 @@ export default function TeamProfilesPage() {
         count++;
       }
     });
+
+    // Save all draft member daybreak updates
+    Object.entries(draftMemberDaybreak).forEach(([key, value]) => {
+      if (value && key.includes('_')) {
+        const parts = key.split('_');
+        const teamName = parts[2];
+        const memberKey = parts.slice(3).join('_');
+        saveMemberDaybreak(teamName, memberKey, value);
+        count++;
+      }
+    });
+
     if (count > 0) {
-      alert(`Saved ${count} attendance record(s)`);
+      alert(`Saved ${count} record(s)`);
     } else {
-      alert('No pending attendance changes to save');
+      alert('No pending changes to save');
     }
   };
 
@@ -802,6 +858,10 @@ export default function TeamProfilesPage() {
       const memberDisplay = getMemberAttendanceDisplay(m.teamName, m.memberKey);
       if (memberDisplay !== attendanceFilter) return false;
     }
+    if (daybreakFilter !== 'All') {
+      const daybreakDisplay = getMemberDaybreakDisplay(m.teamName, m.memberKey);
+      if (daybreakDisplay !== daybreakFilter) return false;
+    }
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       if (
@@ -877,12 +937,16 @@ export default function TeamProfilesPage() {
   };
 
   const exportIndividualsCsv = (rows: any[]) => {
-    const headers = ['Campus', 'Domain', 'Team Name', 'Team Size', 'Name', 'Position', 'Email', 'Reg No', 'Phone No', 'Year', 'School', 'Branch', 'Stay', 'Venue', 'SPOC', 'Attendance'];
+    const headers = ['Campus', 'Domain', 'Team Name', 'Team Size', 'Name', 'Position', 'Email', 'Reg No', 'Phone No', 'Year', 'School', 'Branch', 'Stay', 'Venue', 'SPOC', 'Attendance', 'Daybreak'];
     const body = rows.map((m: any) => {
       const key = `member_attendance_${m.teamName}_${m.memberKey}`;
       const attendanceValue = draftMemberAttendance[key] !== undefined
         ? draftMemberAttendance[key]
         : (memberAttendance[key] || getMemberAttendanceDisplay(m.teamName, m.memberKey) || '');
+      const daybreakKey = `member_daybreak_${m.teamName}_${m.memberKey}`;
+      const daybreakValue = draftMemberDaybreak[daybreakKey] !== undefined
+        ? draftMemberDaybreak[daybreakKey]
+        : (memberDaybreak[daybreakKey] || getMemberDaybreakDisplay(m.teamName, m.memberKey) || '');
       return [
         m.campus || '-',
         normalizeDomain(m.domain) || '-',
@@ -900,6 +964,7 @@ export default function TeamProfilesPage() {
         m.venue || '-',
         m.spoc || '-',
         attendanceValue || '-',
+        daybreakValue || '-',
       ];
     });
     downloadCsv('team_profiles_individuals.csv', headers, body);
@@ -1309,7 +1374,7 @@ export default function TeamProfilesPage() {
           <div className="bg-white rounded-lg shadow-md border-2 border-gitam-300 p-6">
             {/* Filters - NO scrolling, clean grid layout */}
             <div className="mb-6 pb-6 border-b-2 border-gitam-300">
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-10 gap-3 mb-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-11 gap-3 mb-4">
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Campus</label>
                   <select value={campusFilter} onChange={(e)=>setCampusFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
@@ -1380,6 +1445,14 @@ export default function TeamProfilesPage() {
                   </select>
                 </div>
                 <div>
+                  <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Daybreak</label>
+                  <select value={daybreakFilter} onChange={(e)=>setDaybreakFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                    <option>All</option>
+                    <option>Opted</option>
+                    <option>Not opted</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Position</label>
                   <select value={positionFilter} onChange={(e)=>setPositionFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
@@ -1402,7 +1475,7 @@ export default function TeamProfilesPage() {
                   Showing <span className="font-semibold text-gitam-700">{filteredIndividuals.length}</span> individual{filteredIndividuals.length !== 1 ? 's' : ''}
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={bulkSaveAllAttendance} className="hh-btn px-3 py-2 border-2 text-sm font-semibold">💾 Bulk Save ({Object.keys(draftMemberAttendance).length})</button>
+                  <button onClick={bulkSaveAllAttendance} className="hh-btn px-3 py-2 border-2 text-sm font-semibold">💾 Bulk Save ({Object.keys(draftMemberAttendance).length + Object.keys(draftMemberDaybreak).length})</button>
                   <button onClick={()=>exportIndividualsCsv(filteredIndividuals)} className="hh-btn-outline px-3 py-2 border-2 text-sm">Export CSV</button>
                 </div>
               </div>
@@ -1429,6 +1502,7 @@ export default function TeamProfilesPage() {
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">Venue</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200">SPOC</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200 w-[150px]">Attendance</th>
+                    <th className="p-3 text-left font-semibold text-gitam-700 border-r border-gitam-200 w-[170px]">Daybreak</th>
                     <th className="p-3 text-left font-semibold text-gitam-700 w-[145px]">Actions</th>
                   </tr>
                 </thead>
@@ -1472,6 +1546,33 @@ export default function TeamProfilesPage() {
                               draftMemberAttendance[`member_attendance_${m.teamName}_${m.memberKey}`] !== undefined
                                 ? draftMemberAttendance[`member_attendance_${m.teamName}_${m.memberKey}`]
                                 : (memberAttendance[`member_attendance_${m.teamName}_${m.memberKey}`] || getMemberAttendanceDisplay(m.teamName, m.memberKey) || '')
+                            )}
+                            className="hh-btn-outline px-2 py-1 text-xs border-2 whitespace-nowrap shrink-0"
+                          >
+                            Save
+                          </button>
+                        </div>
+                      </td>
+                      <td className="p-3 border-r border-gitam-100 w-[170px]">
+                        <div className="flex gap-2 items-center whitespace-nowrap">
+                          <select
+                            value={draftMemberDaybreak[`member_daybreak_${m.teamName}_${m.memberKey}`] !== undefined
+                              ? draftMemberDaybreak[`member_daybreak_${m.teamName}_${m.memberKey}`]
+                              : (memberDaybreak[`member_daybreak_${m.teamName}_${m.memberKey}`] || getMemberDaybreakDisplay(m.teamName, m.memberKey) || '')}
+                            onChange={(e) => setDraftMemberDaybreak((prev) => ({ ...prev, [`member_daybreak_${m.teamName}_${m.memberKey}`]: e.target.value }))}
+                            className="hh-input !w-[112px] border-2 border-gitam-200 text-xs px-2 py-1 shrink-0"
+                          >
+                            <option value="">-</option>
+                            <option value="Opted">Opted</option>
+                            <option value="Not opted">Not opted</option>
+                          </select>
+                          <button
+                            onClick={() => saveMemberDaybreak(
+                              m.teamName,
+                              m.memberKey,
+                              draftMemberDaybreak[`member_daybreak_${m.teamName}_${m.memberKey}`] !== undefined
+                                ? draftMemberDaybreak[`member_daybreak_${m.teamName}_${m.memberKey}`]
+                                : (memberDaybreak[`member_daybreak_${m.teamName}_${m.memberKey}`] || getMemberDaybreakDisplay(m.teamName, m.memberKey) || '')
                             )}
                             className="hh-btn-outline px-2 py-1 text-xs border-2 whitespace-nowrap shrink-0"
                           >
