@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { getTeamProblemSelection, listProblemStatements, upsertTeamProblemSelection } from '@/lib/problemBackend';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -15,11 +15,15 @@ interface ProblemStatement {
   createdAt: string;
 }
 
+const DEFAULT_PROBLEM_DEADLINE = new Date('2026-03-26T19:00:00');
+
 export default function DashboardProblemPage() {
   const router = useRouter();
   const [tab, setTab] = useState<'view' | 'select'>('view');
   const [team, setTeam] = useState<any>(null);
   const [isLead, setIsLead] = useState(false);
+  const [isFrozen, setIsFrozen] = useState(false);
+  const [effectiveDeadline, setEffectiveDeadline] = useState<Date>(DEFAULT_PROBLEM_DEADLINE);
   const [problems, setProblems] = useState<ProblemStatement[]>([]);
   const [selectedCode, setSelectedCode] = useState<string>('');
   const [pendingCode, setPendingCode] = useState<string>('');
@@ -37,8 +41,55 @@ export default function DashboardProblemPage() {
     return String(value || '').trim();
   };
 
+  const getTeamCampus = (teamValue: any) => String(teamValue?.members?.[0]?.campus || '').trim();
+
+  const computeEffectiveDeadline = useCallback((teamValue: any): Date => {
+    let next = new Date(DEFAULT_PROBLEM_DEADLINE);
+    try {
+      const globalRaw = localStorage.getItem('problem_general_deadline');
+      if (globalRaw) {
+        const parsedGlobal = new Date(globalRaw);
+        if (!Number.isNaN(parsedGlobal.getTime()) && parsedGlobal > next) {
+          next = parsedGlobal;
+        }
+      }
+
+      const teamName = String(teamValue?.teamName || '').trim();
+      const campus = getTeamCampus(teamValue);
+      if (teamName && campus) {
+        const teamKey = `problem_deadline_${encodeURIComponent(teamName)}_${encodeURIComponent(campus)}`;
+        const teamRaw = localStorage.getItem(teamKey);
+        if (teamRaw) {
+          const parsedTeam = new Date(teamRaw);
+          if (!Number.isNaN(parsedTeam.getTime()) && parsedTeam > next) {
+            next = parsedTeam;
+          }
+        }
+      }
+    } catch {
+      // keep default fallback
+    }
+    return next;
+  }, []);
+
+  const formatDeadline = (date: Date) => {
+    try {
+      return date.toLocaleString();
+    } catch {
+      return String(date);
+    }
+  };
+
   const saveProblemSelection = async () => {
     if (!team) return;
+    if (isFrozen) {
+      setSaveMsg('Selection is frozen. Contact admin/SPOC for extension.');
+      return;
+    }
+    if (new Date() > effectiveDeadline) {
+      setSaveMsg('Deadline has passed. Contact admin/SPOC for extension.');
+      return;
+    }
     setSaving(true);
     setSaveMsg('');
     try {
@@ -83,6 +134,8 @@ export default function DashboardProblemPage() {
         if (current) {
           const teamData = current.team;
           setTeam(teamData);
+          setIsFrozen(localStorage.getItem('problem_general_deadline_locked') === 'true');
+          setEffectiveDeadline(computeEffectiveDeadline(teamData));
 
           // Detect if current user is the team lead using same token matching as profile page
           const normalizeId = (v: unknown) => String(v || '').toLowerCase().replace(/[^a-z0-9@_.]/g, '').trim();
@@ -127,7 +180,7 @@ export default function DashboardProblemPage() {
     };
 
     void load();
-  }, []);
+  }, [computeEffectiveDeadline]);
 
   useEffect(() => {
     const reload = async () => {
@@ -135,6 +188,8 @@ export default function DashboardProblemPage() {
         const current = JSON.parse(localStorage.getItem('currentTeam') || 'null');
         if (current?.team) {
           setTeam(current.team);
+          setIsFrozen(localStorage.getItem('problem_general_deadline_locked') === 'true');
+          setEffectiveDeadline(computeEffectiveDeadline(current.team));
           let currentCode = String(current.team.selectedProblemStatement || current.team.selectedProblem || '').trim();
           try {
             const remoteCode = await getTeamProblemSelection(String(current.team.teamName || ''));
@@ -181,7 +236,7 @@ export default function DashboardProblemPage() {
       window.removeEventListener('storage', onStorage);
       clearInterval(poll);
     };
-  }, []);
+  }, [computeEffectiveDeadline]);
 
   if (loading) {
     return (
@@ -217,6 +272,7 @@ export default function DashboardProblemPage() {
   const teamDomain = normalizeDomain(team?.domain);
   const domainProblems = problems.filter((p) => normalizeDomain(p.domain) === teamDomain);
   const selectedProblem = problems.find((p) => String(p.code || '').trim() === selectedCode) || null;
+  const canSelect = isLead && !isFrozen && new Date() <= effectiveDeadline;
 
   return (
     <main className="hh-page p-6">
@@ -276,6 +332,9 @@ export default function DashboardProblemPage() {
             {!isLead ? (
               <div className="bg-antique/60 border-2 border-gitam-200 rounded-xl p-5 text-gitam-700/75">
                 Only the team lead can select a problem statement. Your current selection is shown below.
+                <div className="mt-2 text-gitam-700">
+                  Selection deadline: <span className="font-semibold">{formatDeadline(effectiveDeadline)}</span>
+                </div>
                 {selectedCode ? (
                   <div className="mt-3 font-semibold text-gitam-700">Selected: {selectedCode}</div>
                 ) : (
@@ -292,6 +351,10 @@ export default function DashboardProblemPage() {
               </div>
             ) : (
               <div className="space-y-5">
+                <div className={`rounded-xl border px-4 py-3 text-sm ${canSelect ? 'border-gitam-200 bg-antique/60 text-gitam-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                  <span className="font-semibold">Selection deadline:</span> {formatDeadline(effectiveDeadline)}.
+                  {!canSelect ? ' Deadline has passed or selection is frozen. Contact admin/SPOC to extend.' : ''}
+                </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-sm font-semibold text-gitam-700">Domain</label>
                   <input
@@ -309,6 +372,7 @@ export default function DashboardProblemPage() {
                     <select
                       value={pendingCode}
                       onChange={(e) => { setPendingCode(e.target.value); setSaveMsg(''); }}
+                      disabled={!canSelect}
                       className="border-2 border-gitam-200 rounded-xl px-4 py-2 bg-antique text-gitam-700 font-medium w-full max-w-sm focus:outline-none focus:border-gitam-700"
                     >
                       <option value="">-- Select a problem code --</option>
@@ -333,7 +397,7 @@ export default function DashboardProblemPage() {
                 ) : null}
                 <button
                   onClick={() => void saveProblemSelection()}
-                  disabled={saving || !pendingCode || pendingCode === selectedCode}
+                  disabled={!canSelect || saving || !pendingCode || pendingCode === selectedCode}
                   className="hh-btn px-6 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {saving ? 'Saving…' : 'Save'}

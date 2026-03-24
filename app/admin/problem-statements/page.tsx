@@ -52,7 +52,7 @@ export default function AdminProblemStatementsPage() {
   const [search, setSearch] = useState('');
   const [selectedTeams, setSelectedTeams] = useState<Record<string, boolean>>({});
   const [bulkDeadlineInput, setBulkDeadlineInput] = useState('');
-  const [generalDeadlineInput, setGeneralDeadlineInput] = useState('2026-03-26T18:00');
+  const [generalDeadlineInput, setGeneralDeadlineInput] = useState('2026-03-26T19:00');
   const [generalDeadlineLocked, setGeneralDeadlineLocked] = useState(false);
   const [editingTeamKey, setEditingTeamKey] = useState<string | null>(null);
   const [editingTeamPsCode, setEditingTeamPsCode] = useState('');
@@ -61,7 +61,7 @@ export default function AdminProblemStatementsPage() {
   const [editingDeadlineKey, setEditingDeadlineKey] = useState<string | null>(null);
 
   const DOMAIN_OPTIONS = ['App Development', 'Cyber Security', 'AI', 'ML & DS'];
-  const DEFAULT_DEADLINE_ISO = '2026-03-26T18:00:00';
+  const DEFAULT_DEADLINE_ISO = '2026-03-26T19:00:00';
 
   const rowKeyFor = (teamName: string, campus: string) => `${teamName}::${campus}`;
   const localDeadlineKeyFor = (teamName: string, campus: string) => `problem_deadline_${encodeURIComponent(teamName)}_${encodeURIComponent(campus)}`;
@@ -285,12 +285,12 @@ export default function AdminProblemStatementsPage() {
       } else {
         const iso = new Date(DEFAULT_DEADLINE_ISO).toISOString();
         localStorage.setItem('problem_general_deadline', iso);
-        setGeneralDeadlineInput('2026-03-26T18:00');
+        setGeneralDeadlineInput('2026-03-26T19:00');
       }
       const lock = localStorage.getItem('problem_general_deadline_locked');
       setGeneralDeadlineLocked(lock === 'true');
     } catch {
-      setGeneralDeadlineInput('2026-03-26T18:00');
+      setGeneralDeadlineInput('2026-03-26T19:00');
       setGeneralDeadlineLocked(false);
     }
   }, []);
