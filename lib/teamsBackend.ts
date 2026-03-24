@@ -40,6 +40,41 @@ const normalizePhone = (phone: string) => {
   return digitsOnly;
 };
 
+const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export const syncTeamUsersPassword = async (
+  teamId: string,
+  teamPassword: string,
+  options?: { retries?: number }
+): Promise<boolean> => {
+  const normalizedTeamId = String(teamId || '').trim();
+  const normalizedPassword = String(teamPassword || '').trim();
+  if (!normalizedTeamId || !normalizedPassword) return false;
+
+  const retries = Math.max(1, Math.min(3, Number(options?.retries || 2)));
+
+  for (let attempt = 1; attempt <= retries; attempt += 1) {
+    try {
+      const response = await fetch('/api/auth/bootstrap-team-users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ teamId: normalizedTeamId, teamPassword: normalizedPassword }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (response.ok && payload?.ok !== false) return true;
+    } catch {
+      // retry on transient failures
+    }
+
+    if (attempt < retries) {
+      await wait(200 * attempt);
+    }
+  }
+
+  return false;
+};
+
 const mapTeamRecord = (team: any, members: any[]): TeamRecord => ({
   teamId: team.id,
   teamName: team.team_name,
@@ -580,11 +615,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
           // Legacy-team self-heal: for already-registered users whose Auth password drifted,
           // sync this team's member users to the submitted team password, then retry sign-in.
           try {
-            await fetch('/api/auth/bootstrap-team-users', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ teamId: String(member.team_id), teamPassword: password }),
-            });
+            await syncTeamUsersPassword(String(member.team_id), password, { retries: 2 });
 
             const retry = await trySignInWithEmail(email, password);
             if (retry && !retry.error) {
@@ -622,6 +653,17 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
       void supabase.from('members').update({ auth_user_id: userId }).eq('id', member.id);
     }
   } catch { /* ignore */ }
+
+  // Step 4.1: Team-wide auth self-heal.
+  // If one member can log in successfully, sync all team member Auth passwords
+  // to stop cross-device/member drift issues.
+  try {
+    if (passwordVerified) {
+      await syncTeamUsersPassword(String(member.team_id), password, { retries: 2 });
+    }
+  } catch {
+    // non-blocking: never fail current login because self-heal failed
+  }
 
   // Step 5: Build TeamRecord from RPC data (preferred) or fall back to direct queries
   if (teamRpcData) {

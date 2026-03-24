@@ -7,29 +7,29 @@ type MemberInput = {
 
 const normalizeEmail = (value: string) => String(value || '').trim().toLowerCase();
 
-const findAuthUserIdByEmail = async (
-  admin: any,
-  email: string
-): Promise<string | null> => {
-  const target = normalizeEmail(email);
+const indexUsersByEmailFromList = async (admin: any, emails: string[]) => {
+  const targets = new Set(emails.map((e) => normalizeEmail(e)));
+  const byEmail = new Map<string, string>();
   let page = 1;
   const perPage = 200;
 
-  // Team sizes are very small, but the auth user list can be large.
-  // Walk pages with a hard cap to avoid unbounded API calls.
-  while (page <= 25) {
+  while (page <= 25 && byEmail.size < targets.size) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
-    if (error) return null;
+    if (error) break;
 
     const users = Array.isArray(data?.users) ? data.users : [];
-    const hit = users.find((u: any) => normalizeEmail(String(u?.email || '')) === target);
-    if (hit?.id) return String(hit.id);
+    for (const u of users) {
+      const email = normalizeEmail(String(u?.email || ''));
+      if (targets.has(email) && u?.id) {
+        byEmail.set(email, String(u.id));
+      }
+    }
 
     if (users.length < perPage) break;
     page += 1;
   }
 
-  return null;
+  return byEmail;
 };
 
 export async function POST(req: Request) {
@@ -76,9 +76,34 @@ export async function POST(req: Request) {
 
     const results: Array<{ email: string; status: 'created' | 'updated' | 'failed'; error?: string }> = [];
 
+    // Fast path: query auth.users directly once using service role.
+    // This avoids repeated paginated listUsers calls that can intermittently fail.
+    const existingByEmail = new Map<string, string>();
+    try {
+      const { data: existingRows } = await admin
+        .schema('auth')
+        .from('users')
+        .select('id, email')
+        .in('email', emails);
+
+      for (const row of existingRows || []) {
+        const normalized = normalizeEmail(String((row as any)?.email || ''));
+        const id = String((row as any)?.id || '').trim();
+        if (normalized && id) existingByEmail.set(normalized, id);
+      }
+    } catch {
+      // ignore and fall back per-email below
+    }
+
     for (const email of emails) {
       try {
-        const existingUserId = await findAuthUserIdByEmail(admin, email);
+        let existingUserId = existingByEmail.get(email) || null;
+
+        // Fallback for environments where auth.users query is unavailable.
+        if (!existingUserId) {
+          const indexed = await indexUsersByEmailFromList(admin, [email]);
+          existingUserId = indexed.get(email) || null;
+        }
 
         if (existingUserId) {
           const { error: updateErr } = await admin.auth.admin.updateUserById(existingUserId, {
@@ -110,6 +135,27 @@ export async function POST(req: Request) {
           }
           results.push({ email, status: 'created' });
           continue;
+        }
+
+        // Race/normalization fallback: user exists but fast lookup missed it.
+        const msg = String(error.message || '').toLowerCase();
+        const alreadyExists = msg.includes('already registered') || msg.includes('already exists');
+        if (alreadyExists) {
+          const indexed = await indexUsersByEmailFromList(admin, [email]);
+          const recoveredUserId = indexed.get(email) || null;
+          if (recoveredUserId) {
+            const { error: updateErr } = await admin.auth.admin.updateUserById(recoveredUserId, {
+              password: teamPassword,
+              email_confirm: true,
+            });
+            if (!updateErr) {
+              void admin.from('members').update({ auth_user_id: recoveredUserId }).eq('email_normalized', email);
+              results.push({ email, status: 'updated' });
+              continue;
+            }
+            results.push({ email, status: 'failed', error: updateErr.message });
+            continue;
+          }
         }
 
         results.push({ email, status: 'failed', error: error.message });

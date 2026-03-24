@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import MemberField from './MemberField';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
-import { registerTeamWithMembers, listTeamsWithMembers } from '@/lib/teamsBackend';
+import { registerTeamWithMembers, listTeamsWithMembers, syncTeamUsersPassword } from '@/lib/teamsBackend';
 
 const MAX_TEAM_REGISTRATIONS = 85; // internal hard cap (public-facing text shows 70)
 const REGISTRATION_DRAFT_KEY = 'registerDraft';
@@ -507,17 +507,14 @@ export default function RegisterPage() {
     // This avoids cross-device login issues where only one member can sign in.
     if (isSupabaseConfigured()) {
       try {
-        await fetch('/api/auth/bootstrap-team-users', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            teamId: supabaseTeamId,
-            teamPassword: teamData.teamPassword,
-            members,
-          }),
-        });
+        if (supabaseTeamId) {
+          const synced = await syncTeamUsersPassword(supabaseTeamId, teamData.teamPassword, { retries: 3 });
+          if (!synced) {
+            setGlobalError('Registration saved, but member login sync could not be completed right now. Please notify admin to retry sync from Team Profiles.');
+          }
+        }
       } catch {
-        // Non-blocking: registration should still complete even if bootstrap call fails.
+        setGlobalError('Registration saved, but member login sync failed. Please notify admin to retry sync from Team Profiles.');
       }
     }
 

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
-import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, syncTeamMembers, updateTeam } from '@/lib/teamsBackend';
+import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, syncTeamMembers, syncTeamUsersPassword, updateTeam } from '@/lib/teamsBackend';
 import { deleteAllNocForTeam } from '@/lib/nocBackend';
 import { deleteAllPptForTeam } from '@/lib/pptBackend';
 import { listReportingAssignments } from '@/lib/reportingBackend';
@@ -53,6 +53,8 @@ export default function TeamProfilesPage() {
   const [teamDraft, setTeamDraft] = useState<any | null>(null);
   const [selectedMemberIndex, setSelectedMemberIndex] = useState<number>(0);
   const [editingMember, setEditingMember] = useState<any | null>(null);
+  const [isResyncingAll, setIsResyncingAll] = useState(false);
+  const [resyncAllStatus, setResyncAllStatus] = useState('');
 
   // Keep these in sync with registration dropdowns in app/register/MemberField.tsx
   const registrationCampusOptions = ['Visakhapatnam', 'Hyderabad', 'Bangalore'];
@@ -393,13 +395,12 @@ export default function TeamProfilesPage() {
         const teamPassword = String(teamDraft.teamPassword || registered[editingTeamIndex]?.teamPassword || '').trim();
         if (teamPassword) {
           try {
-            await fetch('/api/auth/bootstrap-team-users', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ teamId: String(teamDraft.teamId), teamPassword }),
-            });
+            const synced = await syncTeamUsersPassword(String(teamDraft.teamId), teamPassword, { retries: 3 });
+            if (!synced) {
+              alert('Team data was saved, but member login sync failed. Please click Save again or check server env keys.');
+            }
           } catch {
-            // non-blocking
+            alert('Team data was saved, but member login sync failed. Please click Save again or check server env keys.');
           }
         }
 
@@ -464,13 +465,12 @@ export default function TeamProfilesPage() {
         const teamPassword = String(teamDraft.teamPassword || registered[editingTeamIndex]?.teamPassword || '').trim();
         if (teamPassword) {
           try {
-            await fetch('/api/auth/bootstrap-team-users', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ teamId: String(teamDraft.teamId), teamPassword }),
-            });
+            const synced = await syncTeamUsersPassword(String(teamDraft.teamId), teamPassword, { retries: 3 });
+            if (!synced) {
+              alert('Team data was saved, but member login sync failed. Please click Save again or check server env keys.');
+            }
           } catch {
-            // non-blocking
+            alert('Team data was saved, but member login sync failed. Please click Save again or check server env keys.');
           }
         }
 
@@ -635,6 +635,98 @@ export default function TeamProfilesPage() {
       alert(`Saved ${count} attendance record(s)`);
     } else {
       alert('No pending attendance changes to save');
+    }
+  };
+
+  const resyncAllTeamLogins = async () => {
+    if (isResyncingAll) return;
+    if (!isSupabaseConfigured()) {
+      alert('Bulk login resync is available only in Supabase mode.');
+      return;
+    }
+
+    const proceed = confirm('This will sync Auth passwords for all teams with known team passwords. Continue?');
+    if (!proceed) return;
+
+    setIsResyncingAll(true);
+    setResyncAllStatus('Preparing team password map...');
+
+    try {
+      let localTeams: any[] = [];
+      try {
+        const parsed = JSON.parse(localStorage.getItem('registeredTeams') || '[]');
+        if (Array.isArray(parsed)) localTeams = parsed;
+      } catch {
+        localTeams = [];
+      }
+
+      const passwordByTeamId = new Map<string, string>();
+      const passwordByTeamName = new Map<string, string>();
+
+      for (const localTeam of localTeams) {
+        const teamId = String(localTeam?.teamId || '').trim();
+        const teamName = String(localTeam?.teamName || '').trim();
+        const teamPassword = String(localTeam?.teamPassword || '').trim();
+        if (!teamPassword) continue;
+        if (teamId) passwordByTeamId.set(teamId, teamPassword);
+        if (teamName) passwordByTeamName.set(canonicalTeamKey(teamName), teamPassword);
+      }
+
+      const targets = Array.isArray(registered) ? registered : [];
+      let synced = 0;
+      let failed = 0;
+      let skipped = 0;
+      const failedTeams: string[] = [];
+      const skippedTeams: string[] = [];
+
+      for (let i = 0; i < targets.length; i += 1) {
+        const team = targets[i] || {};
+        const teamId = String(team.teamId || '').trim();
+        const teamName = String(team.teamName || '').trim() || `Team ${i + 1}`;
+        const directPassword = String(team.teamPassword || '').trim();
+        const mappedPassword = teamId
+          ? passwordByTeamId.get(teamId)
+          : passwordByTeamName.get(canonicalTeamKey(teamName));
+        const teamPassword = String(directPassword || mappedPassword || '').trim();
+
+        setResyncAllStatus(`Resyncing ${i + 1}/${targets.length}: ${teamName}`);
+
+        if (!teamId || !teamPassword) {
+          skipped += 1;
+          skippedTeams.push(teamName);
+          continue;
+        }
+
+        const ok = await syncTeamUsersPassword(teamId, teamPassword, { retries: 3 });
+        if (ok) {
+          synced += 1;
+        } else {
+          failed += 1;
+          failedTeams.push(teamName);
+        }
+      }
+
+      await reloadRegistered();
+
+      const failedPreview = failedTeams.slice(0, 6).join(', ');
+      const skippedPreview = skippedTeams.slice(0, 6).join(', ');
+      const summary = [
+        `Bulk resync completed.`,
+        `Synced teams: ${synced}`,
+        `Failed teams: ${failed}`,
+        `Skipped teams (password unavailable): ${skipped}`,
+        failedPreview ? `Failed (first 6): ${failedPreview}` : '',
+        skippedPreview ? `Skipped (first 6): ${skippedPreview}` : '',
+      ].filter(Boolean).join('\n');
+
+      setResyncAllStatus(`Completed. Synced ${synced}, failed ${failed}, skipped ${skipped}.`);
+      alert(summary);
+    } catch (e: any) {
+      console.warn(e);
+      setResyncAllStatus('Bulk resync failed. Please retry.');
+      alert(e?.message || 'Bulk resync failed.');
+    } finally {
+      setIsResyncingAll(false);
     }
   };
 
@@ -1116,10 +1208,18 @@ export default function TeamProfilesPage() {
               <div className="flex justify-between items-center flex-wrap gap-3">
                 <div className="text-sm text-gitam-600">
                   Showing <span className="font-semibold text-gitam-700">{filteredTeams.length}</span> team{filteredTeams.length !== 1 ? 's' : ''}
+                  {resyncAllStatus ? <span className="ml-3 text-xs text-gitam-700">{resyncAllStatus}</span> : null}
                 </div>
                 <div className="flex gap-2">
                   <button onClick={bulkSaveAllAttendance} className="hh-btn px-3 py-2 border-2 text-sm font-semibold">💾 Bulk Save ({Object.keys(draftTeamAttendance).length})</button>
                   <button onClick={()=>exportTeamsCsv(filteredTeams)} className="hh-btn-outline px-3 py-2 border-2 text-sm">Export CSV</button>
+                  <button
+                    onClick={resyncAllTeamLogins}
+                    disabled={isResyncingAll}
+                    className="hh-btn-outline px-3 py-2 border-2 text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    {isResyncingAll ? 'Resyncing...' : 'Resync All Logins'}
+                  </button>
                 </div>
               </div>
             </div>
