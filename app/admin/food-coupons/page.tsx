@@ -1,11 +1,12 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
 import { replaceFoodCouponsForTeam } from '@/lib/foodBackend';
+import { listReportingAssignments } from '@/lib/reportingBackend';
 import { filterTeamsForSpoc, getStoredSpocUser, isSpocLoggedIn, SpocUser } from '@/lib/spocSession';
 
 export default function AdminFoodCouponsPage(){
@@ -33,6 +34,61 @@ export default function AdminFoodCouponsPage(){
   const [dinnerRedeemFilter, setDinnerRedeemFilter] = useState('All');
   const [lunchRedeemFilter, setLunchRedeemFilter] = useState('All');
   const isAnyModalOpen = !!selectedTeam || !!individualModal;
+
+  const canonicalTeamKey = useCallback((teamName: string) => String(teamName || '').trim().toLowerCase(), []);
+
+  const assignmentsIndex = useMemo(() => {
+    const next: Record<string, any> = {};
+    Object.entries(assignments || {}).forEach(([teamName, value]) => {
+      const key = canonicalTeamKey(teamName);
+      if (key) next[key] = value;
+    });
+    return next;
+  }, [assignments, canonicalTeamKey]);
+
+  const syncReportingAssignments = useCallback(async () => {
+    let localMap: Record<string, any> = {};
+    try {
+      const stored = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
+      localMap = (stored && typeof stored === 'object') ? stored : {};
+    } catch {
+      localMap = {};
+    }
+
+    if (!isSupabaseConfigured()) {
+      setAssignments(localMap);
+      return;
+    }
+
+    try {
+      const remoteMap = await listReportingAssignments();
+      if (remoteMap && typeof remoteMap === 'object') {
+        const merged: Record<string, any> = { ...localMap };
+        Object.entries(remoteMap).forEach(([teamName, assignment]) => {
+          const key = canonicalTeamKey(teamName);
+          const existingKey = Object.keys(merged).find((k) => canonicalTeamKey(k) === key);
+          const saved = (existingKey ? merged[existingKey] : {}) || {};
+          merged[teamName] = {
+            ...saved,
+            ...assignment,
+            venue: String((assignment as any)?.venue || saved?.venue || ''),
+            spoc: {
+              name: String((assignment as any)?.spoc?.name || saved?.spoc?.name || ''),
+              email: String((assignment as any)?.spoc?.email || saved?.spoc?.email || ''),
+              phone: String((assignment as any)?.spoc?.phone || saved?.spoc?.phone || ''),
+            },
+          };
+        });
+        setAssignments(merged);
+        localStorage.setItem('reportingAssignments', JSON.stringify(merged));
+        return;
+      }
+    } catch {
+      // fall back to local map
+    }
+
+    setAssignments(localMap);
+  }, [canonicalTeamKey]);
 
   useEffect(() => {
     if (!isSpocView) return;
@@ -106,33 +162,38 @@ export default function AdminFoodCouponsPage(){
           // ignore
         }
 
-        try {
-          const stored = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
-          setAssignments(stored || {});
-        } catch {
-          setAssignments({});
-        }
+        await syncReportingAssignments();
       })();
     }, 2000);
 
     return () => clearInterval(poll);
-  }, []);
+  }, [syncReportingAssignments]);
 
   useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
-      setAssignments(stored || {});
-    } catch (e) {
-      setAssignments({});
-    }
-  }, []);
+    void syncReportingAssignments();
+  }, [syncReportingAssignments]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== 'reportingAssignments') return;
+      void syncReportingAssignments();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [syncReportingAssignments]);
+
+  const getAssignmentForTeam = (teamName: string) => {
+    const direct = assignments[String(teamName || '').trim()];
+    if (direct) return direct;
+    return assignmentsIndex[canonicalTeamKey(teamName)] || {};
+  };
 
   const getVenueForTeam = (teamName: string) => {
-    return assignments[teamName]?.venue || '-';
+    return getAssignmentForTeam(teamName)?.venue || '-';
   };
 
   const getSpocForTeam = (teamName: string) => {
-    return assignments[teamName]?.spoc?.name || '-';
+    return getAssignmentForTeam(teamName)?.spoc?.name || '-';
   };
 
   const getTeamAttendance = (teamName: string): string => {

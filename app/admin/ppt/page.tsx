@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
+import { listReportingAssignments } from '@/lib/reportingBackend';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
 import { listTeamProblemSelections } from '@/lib/problemBackend';
 import { filterTeamsForSpoc, getStoredSpocUser, isSpocLoggedIn, SpocUser } from '@/lib/spocSession';
@@ -43,6 +44,61 @@ export default function AdminPPTPage() {
   const [adminSelectedFiles, setAdminSelectedFiles] = useState<Record<string, File | null>>({});
   const [adminUploadingRows, setAdminUploadingRows] = useState<Record<string, boolean>>({});
 
+  const canonicalTeamKey = useCallback((teamName: string) => String(teamName || '').trim().toLowerCase(), []);
+
+  const assignmentsIndex = useMemo(() => {
+    const next: Record<string, any> = {};
+    Object.entries(assignments || {}).forEach(([teamName, value]) => {
+      const key = canonicalTeamKey(teamName);
+      if (key) next[key] = value;
+    });
+    return next;
+  }, [assignments, canonicalTeamKey]);
+
+  const syncReportingAssignments = useCallback(async () => {
+    let localMap: Record<string, any> = {};
+    try {
+      const map = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
+      localMap = (map && typeof map === 'object') ? map : {};
+    } catch {
+      localMap = {};
+    }
+
+    if (!isSupabaseConfigured()) {
+      setAssignments(localMap);
+      return;
+    }
+
+    try {
+      const remoteMap = await listReportingAssignments();
+      if (remoteMap && typeof remoteMap === 'object') {
+        const merged: Record<string, any> = { ...localMap };
+        Object.entries(remoteMap).forEach(([teamName, assignment]) => {
+          const key = canonicalTeamKey(teamName);
+          const existingKey = Object.keys(merged).find((k) => canonicalTeamKey(k) === key);
+          const saved = (existingKey ? merged[existingKey] : {}) || {};
+          merged[teamName] = {
+            ...saved,
+            ...assignment,
+            venue: String((assignment as any)?.venue || saved?.venue || ''),
+            spoc: {
+              name: String((assignment as any)?.spoc?.name || saved?.spoc?.name || ''),
+              email: String((assignment as any)?.spoc?.email || saved?.spoc?.email || ''),
+              phone: String((assignment as any)?.spoc?.phone || saved?.spoc?.phone || ''),
+            },
+          };
+        });
+        setAssignments(merged);
+        localStorage.setItem('reportingAssignments', JSON.stringify(merged));
+        return;
+      }
+    } catch {
+      // fall back to local map
+    }
+
+    setAssignments(localMap);
+  }, [canonicalTeamKey]);
+
   useEffect(() => {
     if (!isSpocView) return;
     if (!isSpocLoggedIn()) {
@@ -72,9 +128,15 @@ export default function AdminPPTPage() {
     return String(value);
   };
 
-  const getZoneForTeam = (teamName: string) => assignments[teamName]?.venue || '-';
+  const getAssignmentForTeam = (teamName: string) => {
+    const direct = assignments[String(teamName || '').trim()];
+    if (direct) return direct;
+    return assignmentsIndex[canonicalTeamKey(teamName)] || {};
+  };
+
+  const getZoneForTeam = (teamName: string) => getAssignmentForTeam(teamName)?.venue || '-';
   const getVenueForTeam = (teamName: string) => getZoneForTeam(teamName);
-  const getSpocForTeam = (teamName: string) => String(assignments[teamName]?.spoc?.name || '-');
+  const getSpocForTeam = (teamName: string) => String(getAssignmentForTeam(teamName)?.spoc?.name || '-');
 
   const getTeamAttendance = (teamName: string): string => {
     try {
@@ -172,12 +234,7 @@ export default function AdminPPTPage() {
     const poll = setInterval(() => {
       if (Object.values(adminUploadingRows).some(Boolean)) return;
       reload();
-      try {
-        const map = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
-        setAssignments(map || {});
-      } catch {
-        setAssignments({});
-      }
+      void syncReportingAssignments();
     }, 2000);
 
     return () => clearInterval(poll);
@@ -194,12 +251,7 @@ export default function AdminPPTPage() {
   }, []);
 
   useEffect(() => {
-    try {
-      const map = JSON.parse(localStorage.getItem('reportingAssignments') || '{}');
-      setAssignments(map || {});
-    } catch {
-      setAssignments({});
-    }
+    void syncReportingAssignments();
 
     try {
       const existing = localStorage.getItem('ppt_general_deadline');
@@ -213,7 +265,16 @@ export default function AdminPPTPage() {
     } catch {
       setBulkDeadlineInput(DEFAULT_DEADLINE_INPUT);
     }
-  }, []);
+  }, [syncReportingAssignments]);
+
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key && event.key !== 'reportingAssignments') return;
+      void syncReportingAssignments();
+    };
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, [syncReportingAssignments]);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;

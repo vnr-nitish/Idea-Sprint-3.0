@@ -76,7 +76,24 @@ export default function AdminProblemStatementsPage() {
     return String(value);
   };
 
-  const getZoneForTeam = useCallback((teamName: string) => assignments[teamName]?.venue || '-', [assignments]);
+  const canonicalTeamKey = useCallback((teamName: string) => String(teamName || '').trim().toLowerCase(), []);
+
+  const assignmentsIndex = useMemo(() => {
+    const next: Record<string, any> = {};
+    Object.entries(assignments || {}).forEach(([teamName, value]) => {
+      const key = canonicalTeamKey(teamName);
+      if (key) next[key] = value;
+    });
+    return next;
+  }, [assignments, canonicalTeamKey]);
+
+  const getAssignmentForTeam = useCallback((teamName: string) => {
+    const direct = assignments[String(teamName || '').trim()];
+    if (direct) return direct;
+    return assignmentsIndex[canonicalTeamKey(teamName)] || {};
+  }, [assignments, assignmentsIndex, canonicalTeamKey]);
+
+  const getZoneForTeam = useCallback((teamName: string) => getAssignmentForTeam(teamName)?.venue || '-', [getAssignmentForTeam]);
 
   useEffect(() => {
     if (!isSpocView) return;
@@ -94,8 +111,8 @@ export default function AdminProblemStatementsPage() {
   }, [registered, assignments, spocUser, isSpocView]);
 
   const getSpocForTeam = useCallback((teamName: string) => {
-    return String(assignments[teamName]?.spoc?.name || '-');
-  }, [assignments]);
+    return String(getAssignmentForTeam(teamName)?.spoc?.name || '-');
+  }, [getAssignmentForTeam]);
 
   const getTeamAttendance = (teamName: string): string => {
     try {
