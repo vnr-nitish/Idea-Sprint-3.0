@@ -938,3 +938,149 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, mo
     teamId: String(member.team_id),
   };
 };
+
+export const loginWithEmailAndTeamPassword = async (
+  emailInput: string,
+  teamPasswordInput: string
+): Promise<{ team: TeamRecord; identifierNormalized: string; memberId: string; teamId: string } | null> => {
+  if (!isSupabaseConfigured()) return null;
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  const emailRaw = String(emailInput || '').trim().toLowerCase();
+  const teamPassword = String(teamPasswordInput || '').trim();
+  if (!emailRaw || !teamPassword) return null;
+
+  const identifierNormalized = normalizeIdentifier(emailRaw);
+  if (!identifierNormalized) return null;
+
+  try {
+    const authResult = await withLoginTimeout(
+      supabase.auth.signInWithPassword({ email: emailRaw, password: teamPassword })
+    );
+
+    if (!authResult || (authResult as any).error) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  let member: any | null = null;
+
+  try {
+    const rpc = await supabase.rpc('find_member_for_login', { identifier: identifierNormalized });
+    if (!rpc.error && rpc.data) {
+      member = Array.isArray(rpc.data) && rpc.data.length > 0 ? rpc.data[0] : rpc.data;
+    }
+  } catch {
+    // ignore
+  }
+
+  if (!member?.team_id) {
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .select('id, team_id, name, email, phone_number, registration_number')
+        .or(
+          `email_normalized.eq.${identifierNormalized},registration_number_normalized.eq.${identifierNormalized},email.ilike.${emailRaw},registration_number.eq.${emailRaw}`
+        )
+        .limit(25);
+      if (!error && Array.isArray(data) && data.length > 0) {
+        member = data[0];
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  if (!member?.team_id) return null;
+
+  let teamRpcData: any = null;
+  try {
+    const { data, error } = await supabase.rpc('get_login_team_data', { p_team_id: member.team_id });
+    if (!error && data) teamRpcData = data;
+  } catch {
+    // ignore
+  }
+
+  if (teamRpcData) {
+    const rpcMembers: any[] = Array.isArray(teamRpcData.members) ? teamRpcData.members : [];
+    const team: TeamRecord = {
+      teamId: teamRpcData.id,
+      teamName: teamRpcData.team_name,
+      domain: teamRpcData.domain || '',
+      teamPassword: '',
+      createdAt: teamRpcData.created_at,
+      members: rpcMembers.map((m: any) => ({
+        id: m.id,
+        name: m.name || '',
+        registrationNumber: m.registration_number || '',
+        email: m.email || '',
+        phoneNumber: m.phone_number || '',
+        school: m.school || '',
+        program: m.program || '',
+        programOther: m.program_other || '',
+        branch: m.branch || '',
+        campus: m.campus || '',
+        stay: m.stay || '',
+        yearOfStudy: m.year_of_study || '',
+      })),
+    };
+
+    const resolvedMember = rpcMembers.find((m: any) =>
+      normalizeIdentifier(m.email) === identifierNormalized ||
+      normalizeIdentifier(m.registration_number) === identifierNormalized
+    );
+
+    return {
+      team,
+      identifierNormalized,
+      memberId: resolvedMember?.id || String(member.id),
+      teamId: teamRpcData.id,
+    };
+  }
+
+  const { data: teamRow } = await supabase
+    .from('teams')
+    .select('id, team_name, domain, created_at')
+    .eq('id', member.team_id)
+    .maybeSingle();
+
+  const { data: memberRows } = await supabase
+    .from('members')
+    .select('id, member_index, name, registration_number, email, phone_number, school, program, program_other, branch, campus, stay, year_of_study')
+    .eq('team_id', member.team_id)
+    .order('member_index', { ascending: true });
+
+  if (!teamRow || !memberRows) return null;
+
+  const team: TeamRecord = {
+    teamId: teamRow.id,
+    teamName: teamRow.team_name,
+    domain: teamRow.domain || '',
+    teamPassword: '',
+    createdAt: teamRow.created_at,
+    members: memberRows.map((m: any) => ({
+      id: m.id,
+      name: m.name || '',
+      registrationNumber: m.registration_number || '',
+      email: m.email || '',
+      phoneNumber: m.phone_number || '',
+      school: m.school || '',
+      program: m.program || '',
+      programOther: m.program_other || '',
+      branch: m.branch || '',
+      campus: m.campus || '',
+      stay: m.stay || '',
+      yearOfStudy: m.year_of_study || '',
+    })),
+  };
+
+  return {
+    team,
+    identifierNormalized,
+    memberId: String(member.id),
+    teamId: String(member.team_id),
+  };
+};

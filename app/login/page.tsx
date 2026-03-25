@@ -3,7 +3,7 @@
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
-import { loginWithIdentifierAndPassword } from '@/lib/teamsBackend';
+import { loginWithEmailAndTeamPassword, loginWithIdentifierAndPassword } from '@/lib/teamsBackend';
 import { listReportingSpocs } from '@/lib/reportingBackend';
 import { setStoredSpocUser } from '@/lib/spocSession';
 
@@ -187,7 +187,7 @@ export default function LoginPage() {
     }
 
     if (!String(formData.mobile || '').trim()) {
-      newErrors.mobile = 'Registered mobile number is required';
+      newErrors.mobile = 'Password or registered mobile number is required';
     }
 
     return newErrors;
@@ -256,6 +256,30 @@ export default function LoginPage() {
       }
 
       if (isSupabaseConfigured()) {
+        // Preferred team login path: email + team password via Supabase Auth.
+        try {
+          const teamSession = await withTimeout(
+            loginWithEmailAndTeamPassword(formData.identifier, formData.mobile),
+            LOGIN_REQUEST_TIMEOUT_MS
+          );
+          if (teamSession?.team) {
+            localStorage.setItem(
+              'currentTeam',
+              JSON.stringify({
+                team: teamSession.team,
+                identifier: teamSession.identifierNormalized,
+                identifierNormalized: teamSession.identifierNormalized,
+                memberId: teamSession.memberId,
+                teamId: teamSession.teamId,
+              })
+            );
+            window.location.href = '/dashboard';
+            return;
+          }
+        } catch (e) {
+          console.warn(e);
+        }
+
         // Fast SPOC login from local snapshot first.
         try {
           const spocs: SpocRecord[] = readLocalSpocs();
