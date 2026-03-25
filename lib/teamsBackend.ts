@@ -782,26 +782,33 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, mo
     // ignore
   }
 
-  // Fallback: direct query (works when RLS is disabled)
+  const identifierMatchesMember = (m: any) => {
+    const emailNormalized = normalizeIdentifier(String(m?.email || ''));
+    const regNormalized = normalizeIdentifier(String(m?.registration_number || ''));
+    return emailNormalized === identifierNormalized || regNormalized === identifierNormalized;
+  };
+
+  // Fallback: direct query by phone first, then confirm identifier on the same member row.
   if (!member) {
     const { data, error } = await supabase
       .from('members')
-      .select('id, team_id, name, email, phone_number')
+      .select('id, team_id, name, email, phone_number, registration_number')
       .or(
-        `email_normalized.eq.${identifierNormalized},registration_number_normalized.eq.${identifierNormalized}`
+        `phone_number_normalized.eq.${mobileNormalized},phone_number.eq.${mobileInput}`
       )
       .limit(25);
     if (!error && Array.isArray(data) && data.length > 0) {
-      member = pickMemberMatchingMobile(data);
+      member = data.find(identifierMatchesMember) || null;
     }
   }
 
+  // Last fallback: identifier-first query then phone match (for legacy data layouts).
   if (!member && identifierRaw) {
     const { data, error } = await supabase
       .from('members')
-      .select('id, team_id, name, email, phone_number')
+      .select('id, team_id, name, email, phone_number, registration_number')
       .or(
-        `email.ilike.${identifierRaw},registration_number.eq.${identifierRaw}`
+        `email_normalized.eq.${identifierNormalized},registration_number_normalized.eq.${identifierNormalized},email.ilike.${identifierRaw},registration_number.eq.${identifierRaw}`
       )
       .limit(25);
     if (!error && Array.isArray(data) && data.length > 0) {

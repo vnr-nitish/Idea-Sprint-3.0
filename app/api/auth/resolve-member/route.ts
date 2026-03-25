@@ -35,6 +35,9 @@ export async function POST(req: Request) {
     if (!identifier) {
       return NextResponse.json({ ok: false, error: 'identifier is required' }, { status: 400 });
     }
+    if (!mobile) {
+      return NextResponse.json({ ok: false, error: 'mobile is required' }, { status: 400 });
+    }
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -46,59 +49,35 @@ export async function POST(req: Request) {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const memberResult = await withTimeout(
+    const phoneMemberResult = await withTimeout(
       Promise.resolve().then(() =>
         supabase
           .from('members')
           .select('id, team_id, name, email, phone_number, email_normalized, phone_number_normalized, registration_number, registration_number_normalized')
           .or(
-            `email_normalized.eq.${identifier},registration_number_normalized.eq.${identifier}`
+            `phone_number_normalized.eq.${mobile},phone_number.eq.${rawMobile}`
           )
           .limit(25)
       ),
       QUERY_TIMEOUT_MS
     );
 
-    if (!memberResult) {
+    if (!phoneMemberResult) {
       return NextResponse.json({ ok: false, error: 'member_lookup_timeout' }, { status: 504 });
     }
 
-    const normalizedRows = (memberResult as any)?.data;
-    let memberError = (memberResult as any)?.error;
-    const candidateMembers: any[] = Array.isArray(normalizedRows) ? normalizedRows : [];
+    const candidateMembers: any[] = Array.isArray((phoneMemberResult as any)?.data)
+      ? (phoneMemberResult as any).data
+      : [];
+    const memberError = (phoneMemberResult as any)?.error;
 
-    if (candidateMembers.length === 0 && rawIdentifier) {
-      const rawMatchResult = await withTimeout(
-        Promise.resolve().then(() =>
-          supabase
-            .from('members')
-            .select('id, team_id, name, email, phone_number, email_normalized, phone_number_normalized, registration_number, registration_number_normalized')
-            .or(
-              `email.ilike.${rawIdentifier},registration_number.eq.${rawIdentifier}`
-            )
-            .limit(25)
-        ),
-        QUERY_TIMEOUT_MS
-      );
+    const identifierMatchesMember = (m: any) => {
+      const emailNormalized = normalizeIdentifier(String(m?.email_normalized || m?.email || ''));
+      const regNormalized = normalizeIdentifier(String(m?.registration_number_normalized || m?.registration_number || ''));
+      return emailNormalized === identifier || regNormalized === identifier;
+    };
 
-      if (rawMatchResult) {
-        const rawRows = (rawMatchResult as any).data;
-        memberError = (rawMatchResult as any).error;
-        if (Array.isArray(rawRows)) {
-          for (const row of rawRows) {
-            if (!row?.id) continue;
-            if (candidateMembers.some((m) => String(m?.id || '') === String(row.id || ''))) continue;
-            candidateMembers.push(row);
-          }
-        }
-      }
-    }
-
-    let member = candidateMembers[0] || null;
-    if (mobile && candidateMembers.length > 0) {
-      const byMobile = candidateMembers.find((m) => canonicalPhone(String(m?.phone_number || '')) === mobile);
-      member = byMobile || null;
-    }
+    const member = candidateMembers.find(identifierMatchesMember) || null;
 
     if (memberError || !member?.team_id) {
       return NextResponse.json({ ok: false, error: 'member_not_found' }, { status: 404 });
