@@ -714,61 +714,21 @@ export const syncTeamMembers = async (teamId: string, members: TeamMemberRecord[
   }
 };
 
-export const loginWithIdentifierAndPassword = async (identifierInput: string, password: string): Promise<{ team: TeamRecord; identifierNormalized: string; memberId: string; teamId: string } | null> => {
+export const loginWithIdentifierAndPassword = async (identifierInput: string, mobileInput: string): Promise<{ team: TeamRecord; identifierNormalized: string; memberId: string; teamId: string } | null> => {
   if (!isSupabaseConfigured()) return null;
   const supabase = getSupabaseClient();
   if (!supabase) return null;
 
   const identifierNormalized = normalizeIdentifier(identifierInput);
-  const identifierRaw = String(identifierInput || '').trim();
-  const identifierLooksLikeEmail = identifierNormalized.includes('@');
-  const directEmail = String(identifierInput || '').trim().toLowerCase();
-  let passwordVerified = false;
-  let authUserId: string | undefined;
+  const mobileNormalized = canonicalPhone(String(mobileInput || ''));
+  if (!identifierNormalized || !mobileNormalized) return null;
+
   let resolvedTeamFromApi: TeamRecord | null = null;
-  const trySignInWithEmail = async (email: string, pwd: string) => {
-    try {
-      return await withLoginTimeout(supabase.auth.signInWithPassword({ email, password: pwd }));
-    } catch {
-      return null;
-    }
-  };
 
-  // Fast path for email logins: verify credentials first in Auth.
-  // This improves cross-browser reliability when member lookup queries are RLS-restricted.
-  if (identifierLooksLikeEmail) {
-    try {
-      const signInDirect = await trySignInWithEmail(directEmail, password);
-      if (signInDirect && !signInDirect.error) {
-        passwordVerified = true;
-        authUserId = signInDirect.data?.user?.id || undefined;
-      } else if (signInDirect?.error) {
-        const msg = String(signInDirect.error.message || '').toLowerCase();
-        const isEmailNotConfirmed = msg.includes('email not confirmed') || (signInDirect.error as any).code === 'email_not_confirmed';
-        if (isEmailNotConfirmed) {
-          // Password is valid; user just has not confirmed email.
-          passwordVerified = true;
-        }
-      }
-    } catch {
-      // ignore
-    }
-
-    if (!authUserId && passwordVerified) {
-      try {
-        const { data: userData } = await supabase.auth.getUser();
-        authUserId = userData?.user?.id || undefined;
-      } catch {
-        // ignore
-      }
-    }
-  }
-
-  // Step 1: Find member — RPC is SECURITY DEFINER so it works even with RLS enabled.
-  // The RPC returns a TABLE (array), so extract the first element.
+  // Step 1: Resolve member by first identifier (email or registration number).
   let member: any | null = null;
 
-  // First fallback: resolve identifier server-side (service-role) so lookup works from any device/browser.
+  // Preferred path: service-role resolver route for cross-device reliability.
   try {
     const resolved = await withLoginTimeout(fetch('/api/auth/resolve-member', {
       method: 'POST',
@@ -803,6 +763,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
     // ignore
   }
 
+  // RPC fallback for environments where API route is unavailable.
   try {
     if (!member) {
       const rpc = await supabase.rpc('find_member_for_login', { identifier: identifierNormalized });
@@ -820,7 +781,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
       .from('members')
       .select('id, team_id, name, email, phone_number')
       .or(
-        `email_normalized.eq.${identifierNormalized},phone_number_normalized.eq.${identifierNormalized},registration_number_normalized.eq.${identifierNormalized}`
+        `email_normalized.eq.${identifierNormalized},registration_number_normalized.eq.${identifierNormalized}`
       )
       .maybeSingle();
     if (!error && data) {
@@ -828,72 +789,17 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
     }
   }
 
-  // Name fallback for users entering member full name in identifier.
-  if (!member && identifierRaw) {
-    try {
-      const { data, error } = await supabase
-        .from('members')
-        .select('id, team_id, name, email, phone_number')
-        .ilike('name', identifierRaw)
-        .maybeSingle();
-      if (!error && data) member = data;
-    } catch {
-      // ignore
-    }
-  }
-
-  // Fallback for RLS-restricted lookups: if Auth is available, resolve member by auth_user_id.
-  if (!member && authUserId) {
-    try {
-      const { data } = await supabase
-        .from('members')
-        .select('id, team_id, name, email, phone_number')
-        .eq('auth_user_id', authUserId)
-        .maybeSingle();
-      if (data) member = data;
-    } catch {
-      // ignore
-    }
-  }
-
-  // Last fallback: claim row by normalized email after auth sign-in, then read it.
-  if (!member && authUserId && identifierLooksLikeEmail) {
-    try {
-      const { data } = await supabase
-        .from('members')
-        .update({ auth_user_id: authUserId })
-        .eq('email_normalized', identifierNormalized)
-        .select('id, team_id, name, email, phone_number')
-        .maybeSingle();
-      if (data) member = data;
-    } catch {
-      // ignore
-    }
-  }
-
   if (!member?.team_id) return null;
 
-  // Fallback option: allow member's own phone number as the second credential.
-  // This bypasses Auth-password drift while still tying access to an existing member identifier.
+  // Step 2: Verify second identifier strictly against member mobile number.
   let memberPhoneDigits = canonicalPhone(String(member.phone_number || ''));
   if (!memberPhoneDigits && resolvedTeamFromApi?.members?.length) {
     const matchedMember = resolvedTeamFromApi.members.find((m: any) => String(m?.id || '') === String(member.id || ''));
     memberPhoneDigits = canonicalPhone(String((matchedMember as any)?.phoneNumber || ''));
   }
-  const loginSecretCanonical = canonicalPhone(String(password || ''));
-  const phoneCredentialAccepted = !!(
-    loginSecretCanonical &&
-    memberPhoneDigits &&
-    loginSecretCanonical === memberPhoneDigits
-  );
-  if (phoneCredentialAccepted) {
-    passwordVerified = true;
-  }
+  if (!memberPhoneDigits || memberPhoneDigits !== mobileNormalized) return null;
 
-  const email = String(member.email || (identifierLooksLikeEmail ? directEmail : '')).trim();
-  if (!email && !passwordVerified) return null;
-
-  // Step 2: Fetch full team data via SECURITY DEFINER RPC — works in ANY browser regardless of auth/RLS.
+  // Step 3: Fetch full team data via SECURITY DEFINER RPC — works in any browser regardless of auth/RLS.
   // Run this SQL in your Supabase SQL editor to create the function:
   //
   // CREATE OR REPLACE FUNCTION public.get_login_team_data(p_team_id uuid)
@@ -917,73 +823,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
     // ignore — will fall back to direct queries below
   }
 
-  // Step 3: Verify password via Supabase Auth.
-  if (!passwordVerified) {
-    const signIn = await trySignInWithEmail(email, password);
-    if (!signIn) return null;
-    if (signIn.error) {
-      // "Email not confirmed" means Supabase DID validate the password — credentials are correct.
-      const isEmailNotConfirmed =
-        signIn.error.message?.toLowerCase().includes('email not confirmed') ||
-        (signIn.error as any).code === 'email_not_confirmed';
-
-      if (isEmailNotConfirmed) {
-        passwordVerified = true;
-      } else {
-        // Cross-device reliability: if Auth user is missing for this email,
-        // bootstrap it with the same credentials and continue.
-        // Set redirect to production URL so any confirmation link is never localhost.
-        const appUrl =
-          process.env.NEXT_PUBLIC_APP_URL ||
-          'https://ideasprint-tmgc-gcgc.vercel.app';
-
-        const signUp = await withLoginTimeout(supabase.auth.signUp({
-          email,
-          password,
-          options: { emailRedirectTo: `${appUrl}/login` },
-        }));
-
-        if (!signUp) return null;
-
-        if (signUp.error) {
-          const msg = String(signUp.error.message || '').toLowerCase();
-          const alreadyExists = msg.includes('already registered') || msg.includes('already exists');
-          if (alreadyExists) return null;
-          return null;
-        }
-
-        passwordVerified = true;
-        authUserId = signUp.data?.user?.id || authUserId;
-      }
-    } else {
-      passwordVerified = true;
-      authUserId = signIn.data?.user?.id || authUserId;
-    }
-  }
-
-  // Step 4: Bind auth uid to member row (best-effort, non-blocking)
-  try {
-    const userId = authUserId || (await supabase.auth.getUser()).data?.user?.id;
-    if (userId) {
-      void supabase.from('members').update({ auth_user_id: userId }).eq('id', member.id);
-    }
-  } catch { /* ignore */ }
-
-  // Step 4.1: Team-wide auth self-heal.
-  // If one member can log in successfully, sync all team member Auth passwords
-  // to stop cross-device/member drift issues.
-  try {
-    if (passwordVerified) {
-      // Never rewrite team Auth passwords when login was done via phone fallback.
-      if (!phoneCredentialAccepted && shouldRunTeamAuthHeal(String(member.team_id))) {
-        void syncTeamUsersPassword(String(member.team_id), password, { retries: 2 });
-      }
-    }
-  } catch {
-    // non-blocking: never fail current login because self-heal failed
-  }
-
-  // Step 5: Build TeamRecord from RPC data (preferred) or fall back to direct queries
+  // Step 4: Build TeamRecord from RPC data (preferred) or fall back to direct queries
   if (teamRpcData) {
     const rpcMembers: any[] = Array.isArray(teamRpcData.members) ? teamRpcData.members : [];
     const team: TeamRecord = {
@@ -1009,9 +849,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
     };
     const resolvedMember = rpcMembers.find((m: any) =>
       normalizeIdentifier(m.email) === identifierNormalized ||
-      normalizeIdentifier(m.registration_number) === identifierNormalized ||
-      normalizeIdentifier(m.phone_number) === identifierNormalized ||
-      String(m.name || '').trim().toLowerCase() === identifierNormalized
+      normalizeIdentifier(m.registration_number) === identifierNormalized
     );
     return {
       team,
@@ -1024,9 +862,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   if (resolvedTeamFromApi) {
     const resolvedMember = resolvedTeamFromApi.members.find((m: any) =>
       normalizeIdentifier(m.email) === identifierNormalized ||
-      normalizeIdentifier(m.registrationNumber) === identifierNormalized ||
-      normalizeIdentifier(m.phoneNumber) === identifierNormalized ||
-      String(m.name || '').trim().toLowerCase() === identifierNormalized
+      normalizeIdentifier(m.registrationNumber) === identifierNormalized
     );
     return {
       team: resolvedTeamFromApi,

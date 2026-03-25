@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
+import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { loginWithIdentifierAndPassword } from '@/lib/teamsBackend';
 import { listReportingSpocs } from '@/lib/reportingBackend';
 import { setStoredSpocUser } from '@/lib/spocSession';
@@ -12,17 +12,6 @@ type SpocRecord = {
   name: string;
   email: string;
   phone: string;
-};
-
-const SPOC_PASSWORD_BY_EMAIL: Record<string, string> = {
-  'smathala@gitam.in': 'Sindhu$538',
-  'ethottem@gitam.in': 'Eesha@457',
-  'baripill@gitam.in': 'Bhavana#914',
-  'aakanksh@gitam.in': 'Akanksha$051',
-  'sgurugub@gitam.in': 'Sathwik@889',
-  'anistala@gitam.in': 'Anuradha$792',
-  'mdwarapu2@gitam.in': 'Monisha&638',
-  'sjoseph@student.gitam.edu': 'Step$029',
 };
 
 const readLocalSpocs = (): SpocRecord[] => {
@@ -40,15 +29,6 @@ const readLocalSpocs = (): SpocRecord[] => {
   } catch {
     return [];
   }
-};
-
-const normalizeSpocPasswordInput = (value: string) =>
-  String(value || '').replace(/\s+/g, '').toLowerCase();
-
-const buildSpocPassword = (name: string, phone: string) => {
-  const compactName = String(name || '').replace(/\s+/g, '');
-  const phoneDigits = String(phone || '').replace(/\D/g, '');
-  return `${compactName}${phoneDigits}`.toLowerCase();
 };
 
 const normalizePhone = (value: string) => String(value || '').replace(/\D/g, '');
@@ -75,32 +55,17 @@ const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T | nul
   ]);
 };
 
-const isValidSpocPassword = (spoc: SpocRecord, inputPassword: string) => {
-  const email = String(spoc?.email || '').trim().toLowerCase();
-  const custom = SPOC_PASSWORD_BY_EMAIL[email];
-  if (typeof custom === 'string') {
-    return String(inputPassword || '').trim() === custom;
-  }
-  return normalizeSpocPasswordInput(inputPassword) === buildSpocPassword(String(spoc?.name || ''), String(spoc?.phone || ''));
-};
-
 export default function LoginPage() {
   const [formData, setFormData] = useState({
     identifier: '',
-    password: '',
+    mobile: '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
   const [infoMessage, setInfoMessage] = useState<string>('');
 
-  const normalizeId = useCallback((value: string) => {
-    const trimmed = (value || '').trim();
-    // If user entered a phone-like value, normalize to digits only.
-    const digitsOnly = trimmed.replace(/\D/g, '');
-    if (digitsOnly.length >= 8 && digitsOnly.length <= 15) return digitsOnly;
-    return trimmed.toLowerCase();
-  }, []);
+  const normalizeId = useCallback((value: string) => (value || '').trim().toLowerCase(), []);
 
   useEffect(() => {
     // Dev-only: seed demo team when visiting /login?seed=1
@@ -191,7 +156,7 @@ export default function LoginPage() {
       localStorage.setItem('registeredTeams', JSON.stringify([demoTeam]));
       localStorage.setItem('currentTeam', JSON.stringify({ team: demoTeam, identifier: normalizeId(demoTeam.members[0].email) }));
 
-      setFormData({ identifier: 'demo.lead@gitam.in', password: 'Demo@1234' });
+      setFormData({ identifier: 'demo.lead@gitam.in', mobile: '9000000001' });
       setInfoMessage('Demo data seeded (dev only). Signing in now...');
       // Auto-redirect in dev so the user lands on dashboard immediately
       setTimeout(() => { window.location.href = '/dashboard'; }, 300);
@@ -218,11 +183,11 @@ export default function LoginPage() {
     const newErrors: Record<string, string> = {};
 
     if (!formData.identifier.trim()) {
-      newErrors.identifier = 'Email / Phone / Reg. No is required';
+      newErrors.identifier = 'Email or registration number is required';
     }
 
-    if (!formData.password) {
-      newErrors.password = 'Team password or phone number is required';
+    if (!canonicalPhone(formData.mobile)) {
+      newErrors.mobile = 'Mobile number is required';
     }
 
     return newErrors;
@@ -241,108 +206,19 @@ export default function LoginPage() {
     setInfoMessage('');
 
     try {
-      // Admin credentials (shared with admin login)
-      const ADMIN_USER = 'tcd_gcgc@gitam.edu';
-      const ADMIN_PASS = 'TCD#GITAM@123';
       const idRaw = normalizeId(formData.identifier);
       const emailRaw = String(formData.identifier || '').trim().toLowerCase();
-      const passwordRaw = String(formData.password || '').trim();
+      const mobileRaw = String(formData.mobile || '').trim();
+      const mobileCanonical = canonicalPhone(mobileRaw);
 
-      // If Supabase is configured, try Auth-based login first.
       if (isSupabaseConfigured()) {
-      // Admin login via Supabase Auth (recommended for RLS-based admin).
-      if (idRaw === ADMIN_USER && formData.password === ADMIN_PASS) {
-        const supabase = getSupabaseClient();
-        if (!supabase) {
-          setErrors({ password: 'Supabase client unavailable. Check environment variables and reload.' });
-          setIsLoading(false);
-          return;
-        }
-
-        const adminSignIn = await withTimeout(
-          supabase.auth.signInWithPassword({ email: ADMIN_USER, password: ADMIN_PASS }),
-          LOGIN_REQUEST_TIMEOUT_MS
-        );
-        const error = adminSignIn?.error;
-        if (!adminSignIn) {
-          setErrors({ password: 'Login timed out. Please try again.' });
-          setIsLoading(false);
-          return;
-        }
-        if (error) {
-          setErrors({ password: 'Admin Supabase sign-in failed. Verify Auth password for tcd_gcgc@gitam.edu.' });
-          setIsLoading(false);
-          return;
-        }
-
-        try { localStorage.setItem('adminLoggedIn', '1'); localStorage.setItem('adminUser', JSON.stringify({ user: ADMIN_USER })); } catch (e) {}
-        window.location.href = '/admin/dashboard';
-        return;
-      }
-
-      // Fast SPOC login from local snapshot first.
-      try {
-        const spocs: SpocRecord[] = readLocalSpocs();
-        localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
-
-        const matchedSpoc = spocs.find((s) => s.email === emailRaw);
-        if (
-          matchedSpoc
-          && passwordRaw
-          && isValidSpocPassword(matchedSpoc, passwordRaw)
-        ) {
-          setStoredSpocUser({
-            id: matchedSpoc.id,
-            name: matchedSpoc.name,
-            email: matchedSpoc.email,
-            phone: matchedSpoc.phone,
-          });
-          window.location.href = '/spoc/dashboard';
-          return;
-        }
-      } catch (e) {
-        console.warn(e);
-      }
-
-      try {
-        const session = await withTimeout(
-          loginWithIdentifierAndPassword(formData.identifier, formData.password),
-          LOGIN_REQUEST_TIMEOUT_MS
-        );
-        if (session?.team) {
-          localStorage.setItem(
-            'currentTeam',
-            JSON.stringify({
-              team: session.team,
-              identifier: session.identifierNormalized,
-              identifierNormalized: session.identifierNormalized,
-              memberId: session.memberId,
-              teamId: session.teamId,
-            })
-          );
-          window.location.href = '/dashboard';
-          return;
-        }
-      } catch (e) {
-        console.warn(e);
-      }
-
-      // SPOC login fallback via backend fetch only when team login did not succeed.
-      try {
-        const remoteSpocs = await withTimeout(listReportingSpocs(), 5000);
-        if (Array.isArray(remoteSpocs) && remoteSpocs.length) {
-          const spocs: SpocRecord[] = remoteSpocs
-            .map((s: any) => ({
-              id: String(s?.id || '').trim(),
-              name: String(s?.name || '').trim(),
-              email: String(s?.email || '').trim().toLowerCase(),
-              phone: String(s?.phone || '').trim(),
-            }))
-            .filter((s) => s.id && s.email);
-
+        // Fast SPOC login from local snapshot first.
+        try {
+          const spocs: SpocRecord[] = readLocalSpocs();
           localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
+
           const matchedSpoc = spocs.find((s) => s.email === emailRaw);
-          if (matchedSpoc && passwordRaw && isValidSpocPassword(matchedSpoc, passwordRaw)) {
+          if (matchedSpoc && isPhoneSecretMatch(String(matchedSpoc.phone || ''), mobileRaw)) {
             setStoredSpocUser({
               id: matchedSpoc.id,
               name: matchedSpoc.name,
@@ -352,17 +228,62 @@ export default function LoginPage() {
             window.location.href = '/spoc/dashboard';
             return;
           }
+        } catch (e) {
+          console.warn(e);
         }
-      } catch (e) {
-        console.warn(e);
-      }
-      }
 
-      // Legacy localStorage login
-      if (idRaw === ADMIN_USER && formData.password === ADMIN_PASS) {
-        try { localStorage.setItem('adminLoggedIn', '1'); localStorage.setItem('adminUser', JSON.stringify({ user: ADMIN_USER })); } catch (e) {}
-        window.location.href = '/admin/dashboard';
-        return;
+        try {
+          const session = await withTimeout(
+            loginWithIdentifierAndPassword(formData.identifier, formData.mobile),
+            LOGIN_REQUEST_TIMEOUT_MS
+          );
+          if (session?.team) {
+            localStorage.setItem(
+              'currentTeam',
+              JSON.stringify({
+                team: session.team,
+                identifier: session.identifierNormalized,
+                identifierNormalized: session.identifierNormalized,
+                memberId: session.memberId,
+                teamId: session.teamId,
+              })
+            );
+            window.location.href = '/dashboard';
+            return;
+          }
+        } catch (e) {
+          console.warn(e);
+        }
+
+        // SPOC login fallback via backend fetch only when team login did not succeed.
+        try {
+          const remoteSpocs = await withTimeout(listReportingSpocs(), 5000);
+          if (Array.isArray(remoteSpocs) && remoteSpocs.length) {
+            const spocs: SpocRecord[] = remoteSpocs
+              .map((s: any) => ({
+                id: String(s?.id || '').trim(),
+                name: String(s?.name || '').trim(),
+                email: String(s?.email || '').trim().toLowerCase(),
+                phone: String(s?.phone || '').trim(),
+              }))
+              .filter((s) => s.id && s.email);
+
+            localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
+            const matchedSpoc = spocs.find((s) => s.email === emailRaw);
+            if (matchedSpoc && isPhoneSecretMatch(String(matchedSpoc.phone || ''), mobileRaw)) {
+              setStoredSpocUser({
+                id: matchedSpoc.id,
+                name: matchedSpoc.name,
+                email: matchedSpoc.email,
+                phone: matchedSpoc.phone,
+              });
+              window.location.href = '/spoc/dashboard';
+              return;
+            }
+          }
+        } catch (e) {
+          console.warn(e);
+        }
       }
 
       // SPOC login fallback from local storage records.
@@ -370,11 +291,7 @@ export default function LoginPage() {
         const spocs: SpocRecord[] = readLocalSpocs();
         localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
         const matchedSpoc = spocs.find((s) => s.email === emailRaw);
-        if (
-          matchedSpoc
-          && passwordRaw
-          && isValidSpocPassword(matchedSpoc, passwordRaw)
-        ) {
+        if (matchedSpoc && isPhoneSecretMatch(String(matchedSpoc.phone || ''), mobileRaw)) {
           setStoredSpocUser({
             id: matchedSpoc.id,
             name: matchedSpoc.name,
@@ -393,12 +310,10 @@ export default function LoginPage() {
       const id = normalizeId(formData.identifier);
       const match = registered.find((team: any) => {
         return team.members.some((m: any) => {
-          const tokens = [m.email, m.phoneNumber, m.registrationNumber, m.name].map((s: string) => normalizeId(s || ''));
+          const tokens = [m.email, m.registrationNumber].map((s: string) => normalizeId(s || ''));
           if (!tokens.includes(id)) return false;
 
-          const teamPasswordMatch = String(team.teamPassword || '') === String(formData.password || '');
-          const phoneSecretMatch = isPhoneSecretMatch(String(m.phoneNumber || ''), String(formData.password || ''));
-          return teamPasswordMatch || phoneSecretMatch;
+          return isPhoneSecretMatch(String(m.phoneNumber || ''), mobileRaw);
         });
       });
 
@@ -406,12 +321,12 @@ export default function LoginPage() {
         localStorage.setItem('currentTeam', JSON.stringify({ team: match, identifier: id, identifierNormalized: id }));
         window.location.href = '/dashboard';
       } else {
-        alert('Invalid credentials. Please check identifier and use team password or member phone number.');
+        alert('Invalid credentials. Please check email/registration number and member mobile number.');
         setIsLoading(false);
       }
     } catch (e) {
       console.warn(e);
-      setErrors({ password: 'Login failed due to a temporary error. Please try again.' });
+      setErrors({ mobile: 'Login failed due to a temporary error. Please try again.' });
       setIsLoading(false);
     }
   };
@@ -444,35 +359,31 @@ export default function LoginPage() {
                   </div>
                 ) : null}
                 <div>
-                  <label htmlFor="identifier" className="block text-sm font-semibold text-gitam-700 mb-2">Email / Phone / Reg. No / Name</label>
+                  <label htmlFor="identifier" className="block text-sm font-semibold text-gitam-700 mb-2">Email or Registration Number</label>
                   <input
                     type="text"
                     id="identifier"
                     name="identifier"
                     value={formData.identifier}
                     onChange={handleChange}
-                    placeholder="you@example.com, reg no, phone, or full name"
+                    placeholder="you@example.com or registration number"
                     className={`hh-input ${errors.identifier ? 'border-gitam-600 bg-antique-100' : ''}`}
                   />
                   {errors.identifier && <p className="text-gitam-700 text-sm mt-1">⚠️ {errors.identifier}</p>}
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="block text-sm font-semibold text-gitam-700 mb-2">Password</label>
+                  <label htmlFor="mobile" className="block text-sm font-semibold text-gitam-700 mb-2">Mobile Number</label>
                   <input
-                    type="password"
-                    id="password"
-                    name="password"
-                    value={formData.password}
+                    type="tel"
+                    id="mobile"
+                    name="mobile"
+                    value={formData.mobile}
                     onChange={handleChange}
-                    placeholder="Team password or your phone number"
-                    className={`hh-input ${errors.password ? 'border-gitam-600 bg-antique-100' : ''}`}
+                    placeholder="Enter your registered mobile number"
+                    className={`hh-input ${errors.mobile ? 'border-gitam-600 bg-antique-100' : ''}`}
                   />
-                  {errors.password && <p className="text-gitam-700 text-sm mt-1">⚠️ {errors.password}</p>}
-                </div>
-
-                <div className="flex items-center justify-end">
-                  <Link href="#" className="text-gitam text-sm font-semibold hover:underline">Forgot password?</Link>
+                  {errors.mobile && <p className="text-gitam-700 text-sm mt-1">⚠️ {errors.mobile}</p>}
                 </div>
 
                 <button type="submit" disabled={isLoading} className="hh-btn w-full py-2">
