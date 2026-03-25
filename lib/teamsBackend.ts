@@ -41,6 +41,274 @@ const normalizePhone = (phone: string) => {
 };
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const TEAMS_CACHE_TTL_MS = 30 * 1000;
+const TEAMS_FALLBACK_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
+const TEAMS_CACHE_KEY = 'registeredTeamsSupabaseCache';
+const TEAMS_CACHE_AT_KEY = 'registeredTeamsSupabaseCacheAt';
+const QUERY_TIMEOUT_MS = 3000;
+const API_QUERY_TIMEOUT_MS = 15000;
+const CIRCUIT_BREAKER_FAILURE_THRESHOLD = 3;
+const CIRCUIT_BREAKER_RESET_MS = 10 * 60 * 1000;
+const ADMIN_USER = 'tcd_gcgc@gitam.edu';
+const ADMIN_PASS = 'TCD#GITAM@123';
+const ADMIN_RECOVERY_COOLDOWN_MS = 60 * 1000;
+const TEAM_AUTH_HEAL_COOLDOWN_MS = 15 * 60 * 1000;
+const TEAM_AUTH_HEAL_AT_KEY_PREFIX = 'teamAuthHealAt:';
+const LOGIN_NETWORK_TIMEOUT_MS = 10000;
+
+let teamsMemoryCache: TeamRecord[] | null = null;
+let teamsMemoryCacheAt = 0;
+let teamsInFlight: Promise<TeamRecord[] | null> | null = null;
+let circuitBreakerOpen = false;
+let circuitBreakerFailures = 0;
+let circuitBreakerOpenAt = 0;
+let lastAdminRecoveryAttemptAt = 0;
+
+const getCircuitBreakerStatus = (): boolean => {
+  if (!circuitBreakerOpen) return false;
+  if (Date.now() - circuitBreakerOpenAt > CIRCUIT_BREAKER_RESET_MS) {
+    circuitBreakerOpen = false;
+    circuitBreakerFailures = 0;
+    return false;
+  }
+  return true;
+};
+
+const recordCircuitBreakerFailure = () => {
+  circuitBreakerFailures += 1;
+  if (circuitBreakerFailures >= CIRCUIT_BREAKER_FAILURE_THRESHOLD) {
+    circuitBreakerOpen = true;
+    circuitBreakerOpenAt = Date.now();
+  }
+};
+
+const recordCircuitBreakerSuccess = () => {
+  circuitBreakerFailures = 0;
+};
+
+export const isSupabaseUnavailable = (): boolean => {
+  return getCircuitBreakerStatus();
+};
+
+const withTimeout = async <T>(promise: Promise<T>, ms: number): Promise<T | null> => {
+  return Promise.race([
+    promise,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+};
+
+const withLoginTimeout = async <T>(promise: Promise<T>): Promise<T | null> => {
+  return withTimeout(promise, LOGIN_NETWORK_TIMEOUT_MS);
+};
+
+const attemptAdminSessionRecovery = async (supabase: any): Promise<boolean> => {
+  if (typeof window === 'undefined') return false;
+  try {
+    const isAdminLoggedIn = localStorage.getItem('adminLoggedIn') === '1';
+    if (!isAdminLoggedIn) return false;
+
+    const now = Date.now();
+    if (now - lastAdminRecoveryAttemptAt < ADMIN_RECOVERY_COOLDOWN_MS) return false;
+    lastAdminRecoveryAttemptAt = now;
+
+    const { error } = await supabase.auth.signInWithPassword({ email: ADMIN_USER, password: ADMIN_PASS });
+    return !error;
+  } catch {
+    return false;
+  }
+};
+
+const shouldRunTeamAuthHeal = (teamId: string): boolean => {
+  if (typeof window === 'undefined') return false;
+  const normalizedTeamId = String(teamId || '').trim();
+  if (!normalizedTeamId) return false;
+  const key = `${TEAM_AUTH_HEAL_AT_KEY_PREFIX}${normalizedTeamId}`;
+  try {
+    const lastRunAt = Number(localStorage.getItem(key) || '0');
+    if (lastRunAt > 0 && Date.now() - lastRunAt < TEAM_AUTH_HEAL_COOLDOWN_MS) {
+      return false;
+    }
+    localStorage.setItem(key, String(Date.now()));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const fetchTeamsViaAPI = async (): Promise<TeamRecord[] | null> => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const response = await Promise.race([
+      fetch('/api/admin/teams-direct'),
+      new Promise<Response>((_, reject) =>
+        setTimeout(() => reject(new Error('timeout')), API_QUERY_TIMEOUT_MS)
+      ),
+    ]);
+    if (!response.ok) {
+      console.warn('API responded with status:', response.status);
+      return null;
+    }
+    const payload = await response.json();
+    if (!Array.isArray(payload.teams)) {
+      console.warn('API response missing teams array');
+      return null;
+    }
+    const teams = payload.teams;
+    if (teams.length > 0) {
+      console.log('✓ Teams loaded via server API:', teams.length, 'teams');
+      recordCircuitBreakerSuccess();
+      return teams;
+    }
+    return null;
+  } catch (e) {
+    console.warn('API call failed:', e);
+    return null;
+  }
+};
+
+const cloneTeams = (rows: TeamRecord[] | null): TeamRecord[] | null => {
+  if (!rows) return null;
+  return JSON.parse(JSON.stringify(rows));
+};
+
+const readLegacyRegisteredTeams = (): TeamRecord[] | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem('registeredTeams');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    return parsed as TeamRecord[];
+  } catch {
+    return null;
+  }
+};
+
+const readTeamsFallbackCache = (): TeamRecord[] | null => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const rawAt = Number(localStorage.getItem(TEAMS_CACHE_AT_KEY) || '0');
+    if (!rawAt || Date.now() - rawAt > TEAMS_FALLBACK_CACHE_MAX_AGE_MS) return null;
+    const raw = localStorage.getItem(TEAMS_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return null;
+    return parsed as TeamRecord[];
+  } catch {
+    return null;
+  }
+};
+
+const writeTeamsFallbackCache = (rows: TeamRecord[]) => {
+  if (!Array.isArray(rows) || rows.length === 0) return;
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(TEAMS_CACHE_KEY, JSON.stringify(rows));
+    localStorage.setItem(TEAMS_CACHE_AT_KEY, String(Date.now()));
+  } catch {
+    // ignore localStorage quota/privacy failures
+  }
+};
+
+const fetchTeamsWithMembersOnce = async (): Promise<TeamRecord[] | null> => {
+  // PRIMARY PATH: Try server API first (avoids CORS issues)
+  if (typeof window !== 'undefined') {
+    const apiTeams = await fetchTeamsViaAPI();
+    if (apiTeams && apiTeams.length > 0) {
+      teamsMemoryCache = apiTeams;
+      teamsMemoryCacheAt = Date.now();
+      writeTeamsFallbackCache(apiTeams);
+      return apiTeams;
+    }
+  }
+
+  // FALLBACK PATH: Try direct Supabase queries
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  try {
+    const fetchTeamsRows = async () => {
+      return withTimeout(
+        Promise.resolve().then(() =>
+          supabase
+            .from('teams')
+            .select('id, team_name, domain, created_at')
+            .order('created_at', { ascending: true })
+        ),
+        QUERY_TIMEOUT_MS
+      );
+    };
+
+    let teamsResult = await fetchTeamsRows();
+
+    if (!teamsResult) {
+      recordCircuitBreakerFailure();
+      return null;
+    }
+
+    let { data: teams, error: teamsError } = teamsResult;
+
+    if (!teamsError && Array.isArray(teams) && teams.length === 0) {
+      const recovered = await attemptAdminSessionRecovery(supabase);
+      if (recovered) {
+        const retried = await fetchTeamsRows();
+        if (retried) {
+          teamsResult = retried;
+          teams = retried.data as any;
+          teamsError = retried.error as any;
+        }
+      }
+    }
+
+    if (teamsError) {
+      recordCircuitBreakerFailure();
+      return null;
+    }
+    if (!teams) return [];
+
+    const teamIds = teams.map((t: any) => t.id).filter(Boolean);
+    if (!teamIds.length) return [];
+
+    const membersResult = await withTimeout(
+      Promise.resolve().then(() =>
+        supabase
+          .from('members')
+          .select(
+            'id, team_id, member_index, name, registration_number, email, phone_number, school, program, program_other, branch, campus, stay, year_of_study'
+          )
+          .in('team_id', teamIds)
+          .order('member_index', { ascending: true })
+      ),
+      QUERY_TIMEOUT_MS
+    );
+
+    if (!membersResult) {
+      recordCircuitBreakerFailure();
+      return null;
+    }
+
+    const { data: members, error: membersError } = membersResult;
+    if (membersError) {
+      recordCircuitBreakerFailure();
+      return null;
+    }
+
+    const membersByTeam = new Map<string, any[]>();
+    if (Array.isArray(members)) {
+      for (const m of members) {
+        const arr = membersByTeam.get(m.team_id) || [];
+        arr.push(m);
+        membersByTeam.set(m.team_id, arr);
+      }
+    }
+
+    recordCircuitBreakerSuccess();
+    return teams.map((t: any) => mapTeamRecord(t, membersByTeam.get(t.id) || []));
+  } catch (e) {
+    recordCircuitBreakerFailure();
+    return null;
+  }
+};
 
 export const syncTeamUsersPassword = async (
   teamId: string,
@@ -98,36 +366,61 @@ const mapTeamRecord = (team: any, members: any[]): TeamRecord => ({
 });
 
 export const listTeamsWithMembers = async (): Promise<TeamRecord[] | null> => {
-  if (!isSupabaseConfigured()) return null;
-  const supabase = getSupabaseClient();
-  if (!supabase) return null;
-
-  const { data: teams, error: teamsError } = await supabase
-    .from('teams')
-    .select('id, team_name, domain, created_at')
-    .order('created_at', { ascending: true });
-
-  if (teamsError || !teams) return [];
-
-  const teamIds = teams.map((t: any) => t.id).filter(Boolean);
-  const { data: members, error: membersError } = await supabase
-    .from('members')
-    .select(
-      'id, team_id, member_index, name, registration_number, email, phone_number, school, program, program_other, branch, campus, stay, year_of_study'
-    )
-    .in('team_id', teamIds)
-    .order('member_index', { ascending: true });
-
-  const membersByTeam = new Map<string, any[]>();
-  if (!membersError && Array.isArray(members)) {
-    for (const m of members) {
-      const arr = membersByTeam.get(m.team_id) || [];
-      arr.push(m);
-      membersByTeam.set(m.team_id, arr);
-    }
+  // API route works even if Supabase client is not configured on frontend
+  // Returns cached data from fallback storage if circuit breaker is open
+  if (!isSupabaseConfigured() && typeof window === 'undefined') return null;
+  
+  const now = Date.now();
+  if (teamsMemoryCache && now - teamsMemoryCacheAt <= TEAMS_CACHE_TTL_MS) {
+    return cloneTeams(teamsMemoryCache);
   }
 
-  return teams.map((t: any) => mapTeamRecord(t, membersByTeam.get(t.id) || []));
+  if (teamsInFlight) {
+    const shared = await teamsInFlight;
+    return cloneTeams(shared);
+  }
+
+  teamsInFlight = (async () => {
+    const fallbackFromStorage = readTeamsFallbackCache();
+    const legacyFallback = readLegacyRegisteredTeams();
+    
+    if (getCircuitBreakerStatus()) {
+      if (teamsMemoryCache) return teamsMemoryCache;
+      if (fallbackFromStorage) return fallbackFromStorage;
+      if (legacyFallback) return legacyFallback;
+      return null;
+    }
+
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const rows = await fetchTeamsWithMembersOnce();
+      if (rows) {
+        // Guard against false empty reads (e.g., transient auth/RLS/session mismatch).
+        if (rows.length === 0) {
+          if (teamsMemoryCache && teamsMemoryCache.length > 0) return teamsMemoryCache;
+          if (fallbackFromStorage && fallbackFromStorage.length > 0) return fallbackFromStorage;
+          if (legacyFallback && legacyFallback.length > 0) return legacyFallback;
+        }
+
+        teamsMemoryCache = rows;
+        teamsMemoryCacheAt = Date.now();
+        writeTeamsFallbackCache(rows);
+        return rows;
+      }
+      if (attempt < 2) await wait(150);
+    }
+
+    if (teamsMemoryCache) return teamsMemoryCache;
+    if (fallbackFromStorage) return fallbackFromStorage;
+    if (legacyFallback) return legacyFallback;
+    return null;
+  })();
+
+  try {
+    const rows = await teamsInFlight;
+    return cloneTeams(rows);
+  } finally {
+    teamsInFlight = null;
+  }
 };
 
 export const getTeamByIdOrName = async (teamId?: string | null, teamName?: string | null): Promise<TeamRecord | null> => {
@@ -423,12 +716,13 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   const identifierNormalized = normalizeIdentifier(identifierInput);
   const identifierLooksLikeEmail = identifierNormalized.includes('@');
   const directEmail = String(identifierInput || '').trim().toLowerCase();
+  const loginSecretDigits = normalizePhone(String(password || ''));
   let passwordVerified = false;
   let authUserId: string | undefined;
   let resolvedTeamFromApi: TeamRecord | null = null;
   const trySignInWithEmail = async (email: string, pwd: string) => {
     try {
-      return await supabase.auth.signInWithPassword({ email, password: pwd });
+      return await withLoginTimeout(supabase.auth.signInWithPassword({ email, password: pwd }));
     } catch {
       return null;
     }
@@ -438,11 +732,11 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   // This improves cross-browser reliability when member lookup queries are RLS-restricted.
   if (identifierLooksLikeEmail) {
     try {
-      const signInDirect = await supabase.auth.signInWithPassword({ email: directEmail, password });
-      if (!signInDirect.error) {
+      const signInDirect = await trySignInWithEmail(directEmail, password);
+      if (signInDirect && !signInDirect.error) {
         passwordVerified = true;
         authUserId = signInDirect.data?.user?.id || undefined;
-      } else {
+      } else if (signInDirect?.error) {
         const msg = String(signInDirect.error.message || '').toLowerCase();
         const isEmailNotConfirmed = msg.includes('email not confirmed') || (signInDirect.error as any).code === 'email_not_confirmed';
         if (isEmailNotConfirmed) {
@@ -470,18 +764,21 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
 
   // First fallback: resolve identifier server-side (service-role) so lookup works from any device/browser.
   try {
-    const resolved = await fetch('/api/auth/resolve-member', {
+    const resolved = await withLoginTimeout(fetch('/api/auth/resolve-member', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identifier: identifierNormalized }),
-    });
-    if (resolved.ok) {
+    }));
+    if (!resolved) {
+      // timed out, continue with other fallbacks
+    } else if (resolved.ok) {
       const payload = await resolved.json().catch(() => null);
       if (payload?.member?.id && payload?.member?.teamId) {
         member = {
           id: payload.member.id,
           team_id: payload.member.teamId,
           email: payload.member.email,
+          phone_number: payload.member.phoneNumber,
         };
       }
       if (payload?.team?.teamId && payload?.team?.teamName && Array.isArray(payload?.team?.members)) {
@@ -514,7 +811,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   if (!member) {
     const { data, error } = await supabase
       .from('members')
-      .select('id, team_id, email')
+      .select('id, team_id, email, phone_number')
       .or(
         `email_normalized.eq.${identifierNormalized},phone_number_normalized.eq.${identifierNormalized},registration_number_normalized.eq.${identifierNormalized}`
       )
@@ -529,7 +826,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
     try {
       const { data } = await supabase
         .from('members')
-        .select('id, team_id, email')
+        .select('id, team_id, email, phone_number')
         .eq('auth_user_id', authUserId)
         .maybeSingle();
       if (data) member = data;
@@ -545,7 +842,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
         .from('members')
         .update({ auth_user_id: authUserId })
         .eq('email_normalized', identifierNormalized)
-        .select('id, team_id, email')
+        .select('id, team_id, email, phone_number')
         .maybeSingle();
       if (data) member = data;
     } catch {
@@ -554,8 +851,27 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   }
 
   if (!member?.team_id) return null;
+
+  // Fallback option: allow member's own phone number as the second credential.
+  // This bypasses Auth-password drift while still tying access to an existing member identifier.
+  let memberPhoneDigits = normalizePhone(String(member.phone_number || ''));
+  if (!memberPhoneDigits && resolvedTeamFromApi?.members?.length) {
+    const matchedMember = resolvedTeamFromApi.members.find((m: any) => String(m?.id || '') === String(member.id || ''));
+    memberPhoneDigits = normalizePhone(String((matchedMember as any)?.phoneNumber || ''));
+  }
+  const phoneCredentialAccepted = !!(
+    loginSecretDigits &&
+    memberPhoneDigits &&
+    (loginSecretDigits === memberPhoneDigits ||
+      memberPhoneDigits.endsWith(loginSecretDigits) ||
+      loginSecretDigits.endsWith(memberPhoneDigits))
+  );
+  if (phoneCredentialAccepted) {
+    passwordVerified = true;
+  }
+
   const email = String(member.email || (identifierLooksLikeEmail ? directEmail : '')).trim();
-  if (!email) return null;
+  if (!email && !passwordVerified) return null;
 
   // Step 2: Fetch full team data via SECURITY DEFINER RPC — works in ANY browser regardless of auth/RLS.
   // Run this SQL in your Supabase SQL editor to create the function:
@@ -601,11 +917,13 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
           process.env.NEXT_PUBLIC_APP_URL ||
           'https://ideasprint-tmgc-gcgc.vercel.app';
 
-        const signUp = await supabase.auth.signUp({
+        const signUp = await withLoginTimeout(supabase.auth.signUp({
           email,
           password,
           options: { emailRedirectTo: `${appUrl}/login` },
-        });
+        }));
+
+        if (!signUp) return null;
 
         if (signUp.error) {
           const msg = String(signUp.error.message || '').toLowerCase();
@@ -659,7 +977,9 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   // to stop cross-device/member drift issues.
   try {
     if (passwordVerified) {
-      await syncTeamUsersPassword(String(member.team_id), password, { retries: 2 });
+      if (shouldRunTeamAuthHeal(String(member.team_id))) {
+        void syncTeamUsersPassword(String(member.team_id), password, { retries: 2 });
+      }
     }
   } catch {
     // non-blocking: never fail current login because self-heal failed

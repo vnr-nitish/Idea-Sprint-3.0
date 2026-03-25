@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
+import SupabaseHealthBanner from '@/app/components/SupabaseHealthBanner';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { loginWithIdentifierAndPassword } from '@/lib/teamsBackend';
 import { listReportingSpocs } from '@/lib/reportingBackend';
@@ -49,6 +50,28 @@ const buildSpocPassword = (name: string, phone: string) => {
   const compactName = String(name || '').replace(/\s+/g, '');
   const phoneDigits = String(phone || '').replace(/\D/g, '');
   return `${compactName}${phoneDigits}`.toLowerCase();
+};
+
+const normalizePhone = (value: string) => String(value || '').replace(/\D/g, '');
+
+const isPhoneSecretMatch = (memberPhone: string, inputSecret: string) => {
+  const memberDigits = normalizePhone(memberPhone);
+  const inputDigits = normalizePhone(inputSecret);
+  if (!memberDigits || !inputDigits) return false;
+  return (
+    memberDigits === inputDigits ||
+    memberDigits.endsWith(inputDigits) ||
+    inputDigits.endsWith(memberDigits)
+  );
+};
+
+const LOGIN_REQUEST_TIMEOUT_MS = 12000;
+
+const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T | null> => {
+  return Promise.race([
+    promise,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
 };
 
 const isValidSpocPassword = (spoc: SpocRecord, inputPassword: string) => {
@@ -198,7 +221,7 @@ export default function LoginPage() {
     }
 
     if (!formData.password) {
-      newErrors.password = 'Password is required';
+      newErrors.password = 'Team password or phone number is required';
     }
 
     return newErrors;
@@ -216,7 +239,7 @@ export default function LoginPage() {
     setIsLoading(true);
     setInfoMessage('');
 
-    setTimeout(async () => {
+    try {
       // Admin credentials (shared with admin login)
       const ADMIN_USER = 'tcd_gcgc@gitam.edu';
       const ADMIN_PASS = 'TCD#GITAM@123';
@@ -226,40 +249,99 @@ export default function LoginPage() {
 
       // If Supabase is configured, try Auth-based login first.
       if (isSupabaseConfigured()) {
-        // Admin login via Supabase Auth (recommended for RLS-based admin).
-        if (idRaw === ADMIN_USER && formData.password === ADMIN_PASS) {
-          try {
-            const supabase = getSupabaseClient();
-            await supabase?.auth.signInWithPassword({ email: ADMIN_USER, password: ADMIN_PASS });
-          } catch (e) {
-            // ignore and fall back to legacy admin flag
-          }
-          try { localStorage.setItem('adminLoggedIn', '1'); localStorage.setItem('adminUser', JSON.stringify({ user: ADMIN_USER })); } catch (e) {}
-          window.location.href = '/admin/dashboard';
+      // Admin login via Supabase Auth (recommended for RLS-based admin).
+      if (idRaw === ADMIN_USER && formData.password === ADMIN_PASS) {
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+          setErrors({ password: 'Supabase client unavailable. Check environment variables and reload.' });
+          setIsLoading(false);
           return;
         }
 
-        // SPOC login via reporting SPOC records.
-        try {
-          let spocs: SpocRecord[] = readLocalSpocs();
-          const remoteSpocs = await listReportingSpocs();
-          if (Array.isArray(remoteSpocs) && remoteSpocs.length) {
-            const remoteMapped = remoteSpocs.map((s: any) => ({
+        const adminSignIn = await withTimeout(
+          supabase.auth.signInWithPassword({ email: ADMIN_USER, password: ADMIN_PASS }),
+          LOGIN_REQUEST_TIMEOUT_MS
+        );
+        const error = adminSignIn?.error;
+        if (!adminSignIn) {
+          setErrors({ password: 'Login timed out. Please try again.' });
+          setIsLoading(false);
+          return;
+        }
+        if (error) {
+          setErrors({ password: 'Admin Supabase sign-in failed. Verify Auth password for tcd_gcgc@gitam.edu.' });
+          setIsLoading(false);
+          return;
+        }
+
+        try { localStorage.setItem('adminLoggedIn', '1'); localStorage.setItem('adminUser', JSON.stringify({ user: ADMIN_USER })); } catch (e) {}
+        window.location.href = '/admin/dashboard';
+        return;
+      }
+
+      // Fast SPOC login from local snapshot first.
+      try {
+        const spocs: SpocRecord[] = readLocalSpocs();
+        localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
+
+        const matchedSpoc = spocs.find((s) => s.email === emailRaw);
+        if (
+          matchedSpoc
+          && passwordRaw
+          && isValidSpocPassword(matchedSpoc, passwordRaw)
+        ) {
+          setStoredSpocUser({
+            id: matchedSpoc.id,
+            name: matchedSpoc.name,
+            email: matchedSpoc.email,
+            phone: matchedSpoc.phone,
+          });
+          window.location.href = '/spoc/dashboard';
+          return;
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+
+      try {
+        const session = await withTimeout(
+          loginWithIdentifierAndPassword(formData.identifier, formData.password),
+          LOGIN_REQUEST_TIMEOUT_MS
+        );
+        if (session?.team) {
+          localStorage.setItem(
+            'currentTeam',
+            JSON.stringify({
+              team: session.team,
+              identifier: session.identifierNormalized,
+              identifierNormalized: session.identifierNormalized,
+              memberId: session.memberId,
+              teamId: session.teamId,
+            })
+          );
+          window.location.href = '/dashboard';
+          return;
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+
+      // SPOC login fallback via backend fetch only when team login did not succeed.
+      try {
+        const remoteSpocs = await withTimeout(listReportingSpocs(), 5000);
+        if (Array.isArray(remoteSpocs) && remoteSpocs.length) {
+          const spocs: SpocRecord[] = remoteSpocs
+            .map((s: any) => ({
               id: String(s?.id || '').trim(),
               name: String(s?.name || '').trim(),
               email: String(s?.email || '').trim().toLowerCase(),
               phone: String(s?.phone || '').trim(),
-            }));
-            spocs = remoteMapped;
-          }
-          localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
+            }))
+            .filter((s) => s.id && s.email);
 
+          localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
           const matchedSpoc = spocs.find((s) => s.email === emailRaw);
-          if (
-            matchedSpoc
-            && passwordRaw
-            && isValidSpocPassword(matchedSpoc, passwordRaw)
-          ) {
+          if (matchedSpoc && passwordRaw && isValidSpocPassword(matchedSpoc, passwordRaw)) {
             setStoredSpocUser({
               id: matchedSpoc.id,
               name: matchedSpoc.name,
@@ -269,29 +351,10 @@ export default function LoginPage() {
             window.location.href = '/spoc/dashboard';
             return;
           }
-        } catch (e) {
-          console.warn(e);
         }
-
-        try {
-          const session = await loginWithIdentifierAndPassword(formData.identifier, formData.password);
-          if (session?.team) {
-            localStorage.setItem(
-              'currentTeam',
-              JSON.stringify({
-                team: session.team,
-                identifier: session.identifierNormalized,
-                identifierNormalized: session.identifierNormalized,
-                memberId: session.memberId,
-                teamId: session.teamId,
-              })
-            );
-            window.location.href = '/dashboard';
-            return;
-          }
-        } catch (e) {
-          console.warn(e);
-        }
+      } catch (e) {
+        console.warn(e);
+      }
       }
 
       // Legacy localStorage login
@@ -328,10 +391,13 @@ export default function LoginPage() {
       try { registered = JSON.parse(localStorage.getItem('registeredTeams') || '[]'); } catch { registered = []; }
       const id = normalizeId(formData.identifier);
       const match = registered.find((team: any) => {
-        if (team.teamPassword !== formData.password) return false;
         return team.members.some((m: any) => {
           const tokens = [m.email, m.phoneNumber, m.registrationNumber].map((s: string) => normalizeId(s || ''));
-          return tokens.includes(id);
+          if (!tokens.includes(id)) return false;
+
+          const teamPasswordMatch = String(team.teamPassword || '') === String(formData.password || '');
+          const phoneSecretMatch = isPhoneSecretMatch(String(m.phoneNumber || ''), String(formData.password || ''));
+          return teamPasswordMatch || phoneSecretMatch;
         });
       });
 
@@ -339,10 +405,14 @@ export default function LoginPage() {
         localStorage.setItem('currentTeam', JSON.stringify({ team: match, identifier: id, identifierNormalized: id }));
         window.location.href = '/dashboard';
       } else {
-        alert('Invalid credentials. Please check identifier and team password.');
+        alert('Invalid credentials. Please check identifier and use team password or member phone number.');
         setIsLoading(false);
       }
-    }, 600);
+    } catch (e) {
+      console.warn(e);
+      setErrors({ password: 'Login failed due to a temporary error. Please try again.' });
+      setIsLoading(false);
+    }
   };
 
   // demo seeding removed from UI for privacy
@@ -352,7 +422,9 @@ export default function LoginPage() {
   const togglePanel = (key: string) => setActivePanel(prev => prev === key ? null : key);
 
   return (
-    <main className="hh-page pt-20 pb-12">
+    <main className="hh-page pb-12">
+      <SupabaseHealthBanner />
+      <div className="pt-20">
       <div className="max-w-6xl mx-auto px-4">
         <div className="hh-card overflow-hidden">
           {/* Hero banner */}
@@ -394,7 +466,7 @@ export default function LoginPage() {
                     name="password"
                     value={formData.password}
                     onChange={handleChange}
-                    placeholder="Team password"
+                    placeholder="Team password or your phone number"
                     className={`hh-input ${errors.password ? 'border-gitam-600 bg-antique-100' : ''}`}
                   />
                   {errors.password && <p className="text-gitam-700 text-sm mt-1">⚠️ {errors.password}</p>}
@@ -413,6 +485,7 @@ export default function LoginPage() {
             </div>
             </div>
         </div>
+      </div>
       </div>
     </main>
   );

@@ -1,6 +1,15 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
+const QUERY_TIMEOUT_MS = 7000;
+
+const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T | null> => {
+  return Promise.race([
+    promise,
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
+};
+
 const normalizeIdentifier = (value: string) => {
   const trimmed = String(value || '').trim();
   const digitsOnly = trimmed.replace(/\D/g, '');
@@ -26,30 +35,54 @@ export async function POST(req: Request) {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const { data: member, error: memberError } = await supabase
-      .from('members')
-      .select('id, team_id, email, email_normalized, phone_number_normalized, registration_number_normalized')
-      .or(
-        `email_normalized.eq.${identifier},phone_number_normalized.eq.${identifier},registration_number_normalized.eq.${identifier}`
-      )
-      .maybeSingle();
+    const memberResult = await withTimeout(
+      Promise.resolve().then(() =>
+        supabase
+          .from('members')
+          .select('id, team_id, email, phone_number, email_normalized, phone_number_normalized, registration_number_normalized')
+          .or(
+            `email_normalized.eq.${identifier},phone_number_normalized.eq.${identifier},registration_number_normalized.eq.${identifier}`
+          )
+          .maybeSingle()
+      ),
+      QUERY_TIMEOUT_MS
+    );
+
+    if (!memberResult) {
+      return NextResponse.json({ ok: false, error: 'member_lookup_timeout' }, { status: 504 });
+    }
+
+    const { data: member, error: memberError } = memberResult;
 
     if (memberError || !member?.team_id) {
       return NextResponse.json({ ok: false, error: 'member_not_found' }, { status: 404 });
     }
 
-    const [{ data: teamRow }, { data: memberRows }] = await Promise.all([
-      supabase
-        .from('teams')
-        .select('id, team_name, domain, created_at')
-        .eq('id', member.team_id)
-        .maybeSingle(),
-      supabase
-        .from('members')
-        .select('id, member_index, name, registration_number, email, phone_number, school, program, program_other, branch, campus, stay, year_of_study')
-        .eq('team_id', member.team_id)
-        .order('member_index', { ascending: true }),
-    ]);
+    const teamAndMembers = await withTimeout(
+      Promise.all([
+        Promise.resolve().then(() =>
+          supabase
+            .from('teams')
+            .select('id, team_name, domain, created_at')
+            .eq('id', member.team_id)
+            .maybeSingle()
+        ),
+        Promise.resolve().then(() =>
+          supabase
+            .from('members')
+            .select('id, member_index, name, registration_number, email, phone_number, school, program, program_other, branch, campus, stay, year_of_study')
+            .eq('team_id', member.team_id)
+            .order('member_index', { ascending: true })
+        ),
+      ]),
+      QUERY_TIMEOUT_MS
+    );
+
+    if (!teamAndMembers) {
+      return NextResponse.json({ ok: false, error: 'team_lookup_timeout' }, { status: 504 });
+    }
+
+    const [{ data: teamRow }, { data: memberRows }] = teamAndMembers;
 
     if (!teamRow || !Array.isArray(memberRows)) {
       return NextResponse.json({ ok: false, error: 'team_not_found' }, { status: 404 });
@@ -61,6 +94,7 @@ export async function POST(req: Request) {
         id: String(member.id),
         teamId: String(member.team_id),
         email: String(member.email || ''),
+        phoneNumber: String((member as any).phone_number || ''),
       },
       team: {
         teamId: String(teamRow.id),

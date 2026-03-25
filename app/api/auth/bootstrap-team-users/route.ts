@@ -7,13 +7,16 @@ type MemberInput = {
 
 const normalizeEmail = (value: string) => String(value || '').trim().toLowerCase();
 
+const LIST_USERS_PER_PAGE = 200;
+const LIST_USERS_MAX_PAGES = 500;
+
 const indexUsersByEmailFromList = async (admin: any, emails: string[]) => {
   const targets = new Set(emails.map((e) => normalizeEmail(e)));
   const byEmail = new Map<string, string>();
   let page = 1;
-  const perPage = 200;
+  const perPage = LIST_USERS_PER_PAGE;
 
-  while (page <= 25 && byEmail.size < targets.size) {
+  while (page <= LIST_USERS_MAX_PAGES && byEmail.size < targets.size) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
     if (error) break;
 
@@ -30,6 +33,47 @@ const indexUsersByEmailFromList = async (admin: any, emails: string[]) => {
   }
 
   return byEmail;
+};
+
+const findAuthUserIdByEmail = async (admin: any, email: string): Promise<string | null> => {
+  const normalized = normalizeEmail(email);
+  if (!normalized) return null;
+
+  // Fast exact match against auth.users.
+  try {
+    const { data } = await admin
+      .schema('auth')
+      .from('users')
+      .select('id, email')
+      .eq('email', normalized)
+      .limit(1);
+
+    const row = Array.isArray(data) ? data[0] : null;
+    const userId = String((row as any)?.id || '').trim();
+    if (userId) return userId;
+  } catch {
+    // continue to fallback path
+  }
+
+  // Case-insensitive fallback for legacy mixed-case emails.
+  try {
+    const { data } = await admin
+      .schema('auth')
+      .from('users')
+      .select('id, email')
+      .ilike('email', normalized)
+      .limit(1);
+
+    const row = Array.isArray(data) ? data[0] : null;
+    const userId = String((row as any)?.id || '').trim();
+    if (userId) return userId;
+  } catch {
+    // continue to listUsers fallback
+  }
+
+  // Final fallback: scan all pages via Admin API.
+  const indexed = await indexUsersByEmailFromList(admin, [normalized]);
+  return indexed.get(normalized) || null;
 };
 
 export async function POST(req: Request) {
@@ -101,8 +145,7 @@ export async function POST(req: Request) {
 
         // Fallback for environments where auth.users query is unavailable.
         if (!existingUserId) {
-          const indexed = await indexUsersByEmailFromList(admin, [email]);
-          existingUserId = indexed.get(email) || null;
+          existingUserId = await findAuthUserIdByEmail(admin, email);
         }
 
         if (existingUserId) {
@@ -141,8 +184,7 @@ export async function POST(req: Request) {
         const msg = String(error.message || '').toLowerCase();
         const alreadyExists = msg.includes('already registered') || msg.includes('already exists');
         if (alreadyExists) {
-          const indexed = await indexUsersByEmailFromList(admin, [email]);
-          const recoveredUserId = indexed.get(email) || null;
+          const recoveredUserId = await findAuthUserIdByEmail(admin, email);
           if (recoveredUserId) {
             const { error: updateErr } = await admin.auth.admin.updateUserById(recoveredUserId, {
               password: teamPassword,
