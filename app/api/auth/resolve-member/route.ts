@@ -49,35 +49,41 @@ export async function POST(req: Request) {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    const phoneMemberResult = await withTimeout(
+
+    // Query for member by both registration number and phone number
+    const memberResult = await withTimeout(
       Promise.resolve().then(() =>
         supabase
           .from('members')
           .select('id, team_id, name, email, phone_number, email_normalized, phone_number_normalized, registration_number, registration_number_normalized')
           .or(
-            `phone_number_normalized.eq.${mobile},phone_number.eq.${rawMobile}`
+            [
+              // Match normalized registration number and normalized phone
+              `registration_number_normalized.eq.${identifier},phone_number_normalized.eq.${mobile}`,
+              // Match raw registration number and normalized phone
+              `registration_number.eq.${rawIdentifier},phone_number_normalized.eq.${mobile}`,
+              // Match normalized registration number and raw phone
+              `registration_number_normalized.eq.${identifier},phone_number.eq.${rawMobile}`,
+              // Match raw registration number and raw phone
+              `registration_number.eq.${rawIdentifier},phone_number.eq.${rawMobile}`
+            ].join(',')
           )
-          .limit(25)
+          .limit(1)
       ),
       QUERY_TIMEOUT_MS
     );
 
-    if (!phoneMemberResult) {
+    if (!memberResult) {
       return NextResponse.json({ ok: false, error: 'member_lookup_timeout' }, { status: 504 });
     }
 
-    const candidateMembers: any[] = Array.isArray((phoneMemberResult as any)?.data)
-      ? (phoneMemberResult as any).data
+    const candidateMembers: any[] = Array.isArray((memberResult as any)?.data)
+      ? (memberResult as any).data
       : [];
-    const memberError = (phoneMemberResult as any)?.error;
+    const memberError = (memberResult as any)?.error;
 
-    const identifierMatchesMember = (m: any) => {
-      const emailNormalized = normalizeIdentifier(String(m?.email_normalized || m?.email || ''));
-      const regNormalized = normalizeIdentifier(String(m?.registration_number_normalized || m?.registration_number || ''));
-      return emailNormalized === identifier || regNormalized === identifier;
-    };
-
-    const member = candidateMembers.find(identifierMatchesMember) || null;
+    // Accept the first match
+    const member = candidateMembers[0] || null;
 
     if (memberError || !member?.team_id) {
       return NextResponse.json({ ok: false, error: 'member_not_found' }, { status: 404 });
