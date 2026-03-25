@@ -40,7 +40,7 @@ export async function POST(req: Request) {
       Promise.resolve().then(() =>
         supabase
           .from('members')
-          .select('id, team_id, name, email, phone_number, email_normalized, phone_number_normalized, registration_number_normalized')
+          .select('id, team_id, name, email, phone_number, email_normalized, phone_number_normalized, registration_number, registration_number_normalized')
           .or(
             `email_normalized.eq.${identifier},registration_number_normalized.eq.${identifier}`
           )
@@ -54,6 +54,26 @@ export async function POST(req: Request) {
     }
 
     let { data: member, error: memberError } = memberResult as any;
+
+    if ((!member || !member?.team_id) && rawIdentifier) {
+      const rawMatchResult = await withTimeout(
+        Promise.resolve().then(() =>
+          supabase
+            .from('members')
+            .select('id, team_id, name, email, phone_number, email_normalized, phone_number_normalized, registration_number, registration_number_normalized')
+            .or(
+              `email.ilike.${rawIdentifier},registration_number.eq.${rawIdentifier}`
+            )
+            .maybeSingle()
+        ),
+        QUERY_TIMEOUT_MS
+      );
+
+      if (rawMatchResult) {
+        member = (rawMatchResult as any).data;
+        memberError = (rawMatchResult as any).error;
+      }
+    }
 
     if (memberError || !member?.team_id) {
       return NextResponse.json({ ok: false, error: 'member_not_found' }, { status: 404 });

@@ -720,6 +720,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, mo
   if (!supabase) return null;
 
   const identifierNormalized = normalizeIdentifier(identifierInput);
+  const identifierRaw = String(identifierInput || '').trim();
   const mobileNormalized = canonicalPhone(String(mobileInput || ''));
   if (!identifierNormalized || !mobileNormalized) return null;
 
@@ -782,6 +783,19 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, mo
       .select('id, team_id, name, email, phone_number')
       .or(
         `email_normalized.eq.${identifierNormalized},registration_number_normalized.eq.${identifierNormalized}`
+      )
+      .maybeSingle();
+    if (!error && data) {
+      member = data;
+    }
+  }
+
+  if (!member && identifierRaw) {
+    const { data, error } = await supabase
+      .from('members')
+      .select('id, team_id, name, email, phone_number')
+      .or(
+        `email.ilike.${identifierRaw},registration_number.eq.${identifierRaw}`
       )
       .maybeSingle();
     if (!error && data) {
