@@ -146,7 +146,11 @@ export default function LoginPage() {
         window.location.href = '/dashboard';
         return;
       } else {
-        setErrors({ mobile: 'Invalid registration number/email or mobile number.' });
+        if (data.error === 'resolver_not_configured') {
+          setErrors({ mobile: 'System Error: Supabase backend is not configured securely. Please add SUPABASE_SERVICE_ROLE_KEY to your Vercel Environment Variables.' });
+        } else {
+          setErrors({ mobile: 'Invalid registration number/email or mobile number.' });
+        }
       }
     } catch (e) {
       setErrors({ mobile: 'Login failed due to a temporary error. Please try again.' });
