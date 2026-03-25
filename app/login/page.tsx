@@ -186,8 +186,8 @@ export default function LoginPage() {
       newErrors.identifier = 'Email or registration number is required';
     }
 
-    if (!canonicalPhone(formData.mobile)) {
-      newErrors.mobile = 'Mobile number is required';
+    if (!String(formData.mobile || '').trim()) {
+      newErrors.mobile = 'Registered mobile number is required';
     }
 
     return newErrors;
@@ -210,6 +210,50 @@ export default function LoginPage() {
       const emailRaw = String(formData.identifier || '').trim().toLowerCase();
       const mobileRaw = String(formData.mobile || '').trim();
       const mobileCanonical = canonicalPhone(mobileRaw);
+
+      // Temporary emergency login path: server-side hardcoded credentials
+      // for SPOCs and selected team members/leads.
+      try {
+        const tempLoginRes = await withTimeout(
+          fetch('/api/auth/temp-login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: formData.identifier, secret: formData.mobile }),
+          }),
+          7000
+        );
+
+        if (tempLoginRes?.ok) {
+          const payload = await tempLoginRes.json().catch(() => null);
+          if (payload?.ok && payload?.role === 'spoc' && payload?.spoc?.email) {
+            setStoredSpocUser({
+              id: String(payload.spoc.id || payload.spoc.email),
+              name: String(payload.spoc.name || ''),
+              email: String(payload.spoc.email || '').toLowerCase(),
+              phone: String(payload.spoc.phone || ''),
+            });
+            window.location.href = '/spoc/dashboard';
+            return;
+          }
+
+          if (payload?.ok && payload?.role === 'team' && payload?.team) {
+            localStorage.setItem(
+              'currentTeam',
+              JSON.stringify({
+                team: payload.team,
+                identifier: normalizeId(formData.identifier),
+                identifierNormalized: normalizeId(formData.identifier),
+                memberId: String(payload?.member?.id || ''),
+                teamId: String(payload?.team?.teamId || ''),
+              })
+            );
+            window.location.href = '/dashboard';
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn(e);
+      }
 
       if (isSupabaseConfigured()) {
         // Fast SPOC login from local snapshot first.
@@ -321,7 +365,7 @@ export default function LoginPage() {
         localStorage.setItem('currentTeam', JSON.stringify({ team: match, identifier: id, identifierNormalized: id }));
         window.location.href = '/dashboard';
       } else {
-        alert('Invalid credentials. Please check email/registration number and member mobile number.');
+        alert('Invalid credentials. Please check identifier and registered mobile number.');
         setIsLoading(false);
       }
     } catch (e) {
@@ -373,9 +417,9 @@ export default function LoginPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="mobile" className="block text-sm font-semibold text-gitam-700 mb-2">Mobile Number</label>
+                  <label htmlFor="mobile" className="block text-sm font-semibold text-gitam-700 mb-2">Registered Mobile Number</label>
                   <input
-                    type="tel"
+                    type="text"
                     id="mobile"
                     name="mobile"
                     value={formData.mobile}
