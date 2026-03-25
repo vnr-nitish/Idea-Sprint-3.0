@@ -147,7 +147,7 @@ export default function LoginPage() {
         return;
       } else {
         if (data.error === 'resolver_not_configured') {
-          setErrors({ mobile: 'System Error: Supabase backend is not configured securely. Please add SUPABASE_SERVICE_ROLE_KEY to your Vercel Environment Variables.' });
+          setErrors({ mobile: 'System Error: Supabase backend is not configured securely. Please add SUPABASE_SERVICE_ROLE_KEY to your Vercel Environment Variables, AND ensure you trigger a new deployment in Vercel for it to take effect.' });
         } else {
           setErrors({ mobile: 'Invalid registration number/email or mobile number.' });
         }
