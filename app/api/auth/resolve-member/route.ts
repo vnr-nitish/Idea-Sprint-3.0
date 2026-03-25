@@ -32,16 +32,20 @@ export async function POST(req: Request) {
     const rawMobile = String(body?.mobile || '').trim();
     const identifier = normalizeIdentifier(rawIdentifier);
     const mobile = canonicalPhone(rawMobile);
+    console.log('[resolve-member] Input:', { rawIdentifier, rawMobile, identifier, mobile });
     if (!identifier) {
+      console.log('[resolve-member] Missing identifier');
       return NextResponse.json({ ok: false, error: 'identifier is required' }, { status: 400 });
     }
     if (!mobile) {
+      console.log('[resolve-member] Missing mobile');
       return NextResponse.json({ ok: false, error: 'mobile is required' }, { status: 400 });
     }
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
     if (!url || !serviceRoleKey) {
+      console.log('[resolve-member] Supabase not configured');
       return NextResponse.json({ ok: false, error: 'resolver_not_configured' }, { status: 503 });
     }
 
@@ -49,31 +53,27 @@ export async function POST(req: Request) {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-
     // Query for member by both registration number and phone number
+    const orQuery = [
+      `registration_number_normalized.eq.${identifier},phone_number_normalized.eq.${mobile}`,
+      `registration_number.eq.${rawIdentifier},phone_number_normalized.eq.${mobile}`,
+      `registration_number_normalized.eq.${identifier},phone_number.eq.${rawMobile}`,
+      `registration_number.eq.${rawIdentifier},phone_number.eq.${rawMobile}`
+    ].join(',');
+    console.log('[resolve-member] Supabase query:', orQuery);
     const memberResult = await withTimeout(
       Promise.resolve().then(() =>
         supabase
           .from('members')
           .select('id, team_id, name, email, phone_number, email_normalized, phone_number_normalized, registration_number, registration_number_normalized')
-          .or(
-            [
-              // Match normalized registration number and normalized phone
-              `registration_number_normalized.eq.${identifier},phone_number_normalized.eq.${mobile}`,
-              // Match raw registration number and normalized phone
-              `registration_number.eq.${rawIdentifier},phone_number_normalized.eq.${mobile}`,
-              // Match normalized registration number and raw phone
-              `registration_number_normalized.eq.${identifier},phone_number.eq.${rawMobile}`,
-              // Match raw registration number and raw phone
-              `registration_number.eq.${rawIdentifier},phone_number.eq.${rawMobile}`
-            ].join(',')
-          )
+          .or(orQuery)
           .limit(1)
       ),
       QUERY_TIMEOUT_MS
     );
 
     if (!memberResult) {
+      console.log('[resolve-member] Supabase query timeout');
       return NextResponse.json({ ok: false, error: 'member_lookup_timeout' }, { status: 504 });
     }
 
@@ -81,11 +81,13 @@ export async function POST(req: Request) {
       ? (memberResult as any).data
       : [];
     const memberError = (memberResult as any)?.error;
+    console.log('[resolve-member] Query result:', { candidateMembers, memberError });
 
     // Accept the first match
     const member = candidateMembers[0] || null;
 
     if (memberError || !member?.team_id) {
+      console.log('[resolve-member] No member found or error', { memberError, member });
       return NextResponse.json({ ok: false, error: 'member_not_found' }, { status: 404 });
     }
 
