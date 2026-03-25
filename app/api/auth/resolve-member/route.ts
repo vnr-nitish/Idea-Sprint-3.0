@@ -20,7 +20,8 @@ const normalizeIdentifier = (value: string) => {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const identifier = normalizeIdentifier(String(body?.identifier || body?.identifierNormalized || ''));
+    const rawIdentifier = String(body?.identifier || body?.identifierNormalized || '').trim();
+    const identifier = normalizeIdentifier(rawIdentifier);
     if (!identifier) {
       return NextResponse.json({ ok: false, error: 'identifier is required' }, { status: 400 });
     }
@@ -39,7 +40,7 @@ export async function POST(req: Request) {
       Promise.resolve().then(() =>
         supabase
           .from('members')
-          .select('id, team_id, email, phone_number, email_normalized, phone_number_normalized, registration_number_normalized')
+          .select('id, team_id, name, email, phone_number, email_normalized, phone_number_normalized, registration_number_normalized')
           .or(
             `email_normalized.eq.${identifier},phone_number_normalized.eq.${identifier},registration_number_normalized.eq.${identifier}`
           )
@@ -52,7 +53,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'member_lookup_timeout' }, { status: 504 });
     }
 
-    const { data: member, error: memberError } = memberResult;
+    let { data: member, error: memberError } = memberResult as any;
+
+    // Name fallback: allow users who type full name in identifier.
+    // Uses exact case-insensitive match (no wildcards) to minimize false positives.
+    if ((!member || !member?.team_id) && rawIdentifier) {
+      const nameResult = await withTimeout(
+        Promise.resolve().then(() =>
+          supabase
+            .from('members')
+            .select('id, team_id, name, email, phone_number, email_normalized, phone_number_normalized, registration_number_normalized')
+            .ilike('name', rawIdentifier)
+            .maybeSingle()
+        ),
+        QUERY_TIMEOUT_MS
+      );
+
+      if (nameResult) {
+        member = (nameResult as any).data;
+        memberError = (nameResult as any).error;
+      }
+    }
 
     if (memberError || !member?.team_id) {
       return NextResponse.json({ ok: false, error: 'member_not_found' }, { status: 404 });
@@ -93,6 +114,7 @@ export async function POST(req: Request) {
       member: {
         id: String(member.id),
         teamId: String(member.team_id),
+        name: String((member as any).name || ''),
         email: String(member.email || ''),
         phoneNumber: String((member as any).phone_number || ''),
       },

@@ -393,7 +393,7 @@ export default function LoginPage() {
       const id = normalizeId(formData.identifier);
       const match = registered.find((team: any) => {
         return team.members.some((m: any) => {
-          const tokens = [m.email, m.phoneNumber, m.registrationNumber].map((s: string) => normalizeId(s || ''));
+          const tokens = [m.email, m.phoneNumber, m.registrationNumber, m.name].map((s: string) => normalizeId(s || ''));
           if (!tokens.includes(id)) return false;
 
           const teamPasswordMatch = String(team.teamPassword || '') === String(formData.password || '');
@@ -444,14 +444,14 @@ export default function LoginPage() {
                   </div>
                 ) : null}
                 <div>
-                  <label htmlFor="identifier" className="block text-sm font-semibold text-gitam-700 mb-2">Email / Phone / Reg. No</label>
+                  <label htmlFor="identifier" className="block text-sm font-semibold text-gitam-700 mb-2">Email / Phone / Reg. No / Name</label>
                   <input
                     type="text"
                     id="identifier"
                     name="identifier"
                     value={formData.identifier}
                     onChange={handleChange}
-                    placeholder="you@example.com or 9999999999 or REG001"
+                    placeholder="you@example.com, reg no, phone, or full name"
                     className={`hh-input ${errors.identifier ? 'border-gitam-600 bg-antique-100' : ''}`}
                   />
                   {errors.identifier && <p className="text-gitam-700 text-sm mt-1">⚠️ {errors.identifier}</p>}

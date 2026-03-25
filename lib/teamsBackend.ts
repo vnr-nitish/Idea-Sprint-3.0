@@ -720,9 +720,9 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   if (!supabase) return null;
 
   const identifierNormalized = normalizeIdentifier(identifierInput);
+  const identifierRaw = String(identifierInput || '').trim();
   const identifierLooksLikeEmail = identifierNormalized.includes('@');
   const directEmail = String(identifierInput || '').trim().toLowerCase();
-  const loginSecretDigits = normalizePhone(String(password || ''));
   let passwordVerified = false;
   let authUserId: string | undefined;
   let resolvedTeamFromApi: TeamRecord | null = null;
@@ -783,6 +783,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
         member = {
           id: payload.member.id,
           team_id: payload.member.teamId,
+          name: payload.member.name,
           email: payload.member.email,
           phone_number: payload.member.phoneNumber,
         };
@@ -817,7 +818,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   if (!member) {
     const { data, error } = await supabase
       .from('members')
-      .select('id, team_id, email, phone_number')
+      .select('id, team_id, name, email, phone_number')
       .or(
         `email_normalized.eq.${identifierNormalized},phone_number_normalized.eq.${identifierNormalized},registration_number_normalized.eq.${identifierNormalized}`
       )
@@ -827,12 +828,26 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
     }
   }
 
+  // Name fallback for users entering member full name in identifier.
+  if (!member && identifierRaw) {
+    try {
+      const { data, error } = await supabase
+        .from('members')
+        .select('id, team_id, name, email, phone_number')
+        .ilike('name', identifierRaw)
+        .maybeSingle();
+      if (!error && data) member = data;
+    } catch {
+      // ignore
+    }
+  }
+
   // Fallback for RLS-restricted lookups: if Auth is available, resolve member by auth_user_id.
   if (!member && authUserId) {
     try {
       const { data } = await supabase
         .from('members')
-        .select('id, team_id, email, phone_number')
+        .select('id, team_id, name, email, phone_number')
         .eq('auth_user_id', authUserId)
         .maybeSingle();
       if (data) member = data;
@@ -848,7 +863,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
         .from('members')
         .update({ auth_user_id: authUserId })
         .eq('email_normalized', identifierNormalized)
-        .select('id, team_id, email, phone_number')
+        .select('id, team_id, name, email, phone_number')
         .maybeSingle();
       if (data) member = data;
     } catch {
@@ -933,31 +948,8 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
         if (signUp.error) {
           const msg = String(signUp.error.message || '').toLowerCase();
           const alreadyExists = msg.includes('already registered') || msg.includes('already exists');
-          if (!alreadyExists) return null;
-
-          // Legacy-team self-heal: for already-registered users whose Auth password drifted,
-          // sync this team's member users to the submitted team password, then retry sign-in.
-          try {
-            await syncTeamUsersPassword(String(member.team_id), password, { retries: 2 });
-
-            const retry = await trySignInWithEmail(email, password);
-            if (retry && !retry.error) {
-              passwordVerified = true;
-              authUserId = retry.data?.user?.id || authUserId;
-            } else {
-              const retryEmailNotConfirmed =
-                String(retry?.error?.message || '').toLowerCase().includes('email not confirmed') ||
-                (retry?.error as any)?.code === 'email_not_confirmed';
-              if (retryEmailNotConfirmed) {
-                passwordVerified = true;
-              } else {
-                return null;
-              }
-            }
-          } catch {
-            return null;
-          }
-          if (!passwordVerified) return null;
+          if (alreadyExists) return null;
+          return null;
         }
 
         passwordVerified = true;
@@ -982,7 +974,8 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
   // to stop cross-device/member drift issues.
   try {
     if (passwordVerified) {
-      if (shouldRunTeamAuthHeal(String(member.team_id))) {
+      // Never rewrite team Auth passwords when login was done via phone fallback.
+      if (!phoneCredentialAccepted && shouldRunTeamAuthHeal(String(member.team_id))) {
         void syncTeamUsersPassword(String(member.team_id), password, { retries: 2 });
       }
     }
@@ -1017,7 +1010,8 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
     const resolvedMember = rpcMembers.find((m: any) =>
       normalizeIdentifier(m.email) === identifierNormalized ||
       normalizeIdentifier(m.registration_number) === identifierNormalized ||
-      normalizeIdentifier(m.phone_number) === identifierNormalized
+      normalizeIdentifier(m.phone_number) === identifierNormalized ||
+      String(m.name || '').trim().toLowerCase() === identifierNormalized
     );
     return {
       team,
@@ -1031,7 +1025,8 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
     const resolvedMember = resolvedTeamFromApi.members.find((m: any) =>
       normalizeIdentifier(m.email) === identifierNormalized ||
       normalizeIdentifier(m.registrationNumber) === identifierNormalized ||
-      normalizeIdentifier(m.phoneNumber) === identifierNormalized
+      normalizeIdentifier(m.phoneNumber) === identifierNormalized ||
+      String(m.name || '').trim().toLowerCase() === identifierNormalized
     );
     return {
       team: resolvedTeamFromApi,
