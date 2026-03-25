@@ -725,6 +725,12 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, mo
   if (!identifierNormalized || !mobileNormalized) return null;
 
   let resolvedTeamFromApi: TeamRecord | null = null;
+  const pickMemberMatchingMobile = (rows: any[]): any | null => {
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    const exactMobile = rows.find((r: any) => canonicalPhone(String(r?.phone_number || '')) === mobileNormalized);
+    if (exactMobile) return exactMobile;
+    return rows[0] || null;
+  };
 
   // Step 1: Resolve member by first identifier (email or registration number).
   let member: any | null = null;
@@ -734,7 +740,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, mo
     const resolved = await withLoginTimeout(fetch('/api/auth/resolve-member', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier: identifierNormalized }),
+      body: JSON.stringify({ identifier: identifierNormalized, mobile: mobileInput }),
     }));
     if (!resolved) {
       // timed out, continue with other fallbacks
@@ -769,7 +775,7 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, mo
     if (!member) {
       const rpc = await supabase.rpc('find_member_for_login', { identifier: identifierNormalized });
       if (!rpc.error && rpc.data) {
-        member = Array.isArray(rpc.data) ? rpc.data[0] : rpc.data;
+        member = Array.isArray(rpc.data) ? pickMemberMatchingMobile(rpc.data) : rpc.data;
       }
     }
   } catch {
@@ -784,9 +790,9 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, mo
       .or(
         `email_normalized.eq.${identifierNormalized},registration_number_normalized.eq.${identifierNormalized}`
       )
-      .maybeSingle();
-    if (!error && data) {
-      member = data;
+      .limit(25);
+    if (!error && Array.isArray(data) && data.length > 0) {
+      member = pickMemberMatchingMobile(data);
     }
   }
 
@@ -797,9 +803,9 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, mo
       .or(
         `email.ilike.${identifierRaw},registration_number.eq.${identifierRaw}`
       )
-      .maybeSingle();
-    if (!error && data) {
-      member = data;
+      .limit(25);
+    if (!error && Array.isArray(data) && data.length > 0) {
+      member = pickMemberMatchingMobile(data);
     }
   }
 

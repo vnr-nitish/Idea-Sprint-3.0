@@ -17,11 +17,21 @@ const normalizeIdentifier = (value: string) => {
   return trimmed.toLowerCase();
 };
 
+const normalizePhone = (value: string) => String(value || '').replace(/\D/g, '');
+
+const canonicalPhone = (value: string) => {
+  const digits = normalizePhone(value);
+  if (!digits) return '';
+  return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const rawIdentifier = String(body?.identifier || body?.identifierNormalized || '').trim();
+    const rawMobile = String(body?.mobile || '').trim();
     const identifier = normalizeIdentifier(rawIdentifier);
+    const mobile = canonicalPhone(rawMobile);
     if (!identifier) {
       return NextResponse.json({ ok: false, error: 'identifier is required' }, { status: 400 });
     }
@@ -44,7 +54,7 @@ export async function POST(req: Request) {
           .or(
             `email_normalized.eq.${identifier},registration_number_normalized.eq.${identifier}`
           )
-          .maybeSingle()
+          .limit(25)
       ),
       QUERY_TIMEOUT_MS
     );
@@ -53,9 +63,11 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: 'member_lookup_timeout' }, { status: 504 });
     }
 
-    let { data: member, error: memberError } = memberResult as any;
+    const normalizedRows = (memberResult as any)?.data;
+    let memberError = (memberResult as any)?.error;
+    const candidateMembers: any[] = Array.isArray(normalizedRows) ? normalizedRows : [];
 
-    if ((!member || !member?.team_id) && rawIdentifier) {
+    if (candidateMembers.length === 0 && rawIdentifier) {
       const rawMatchResult = await withTimeout(
         Promise.resolve().then(() =>
           supabase
@@ -64,15 +76,28 @@ export async function POST(req: Request) {
             .or(
               `email.ilike.${rawIdentifier},registration_number.eq.${rawIdentifier}`
             )
-            .maybeSingle()
+            .limit(25)
         ),
         QUERY_TIMEOUT_MS
       );
 
       if (rawMatchResult) {
-        member = (rawMatchResult as any).data;
+        const rawRows = (rawMatchResult as any).data;
         memberError = (rawMatchResult as any).error;
+        if (Array.isArray(rawRows)) {
+          for (const row of rawRows) {
+            if (!row?.id) continue;
+            if (candidateMembers.some((m) => String(m?.id || '') === String(row.id || ''))) continue;
+            candidateMembers.push(row);
+          }
+        }
       }
+    }
+
+    let member = candidateMembers[0] || null;
+    if (mobile && candidateMembers.length > 0) {
+      const byMobile = candidateMembers.find((m) => canonicalPhone(String(m?.phone_number || '')) === mobile);
+      member = byMobile || null;
     }
 
     if (memberError || !member?.team_id) {
