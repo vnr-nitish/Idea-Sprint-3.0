@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import MemberField from './MemberField';
+import SupabaseHealthBanner from '@/app/components/SupabaseHealthBanner';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { registerTeamWithMembers, listTeamsWithMembers, syncTeamUsersPassword } from '@/lib/teamsBackend';
 
@@ -683,6 +684,7 @@ export default function RegisterPage() {
 
   return (
     <main className="hh-page pt-8 md:pt-10 pb-10">
+      <SupabaseHealthBanner />
       <div className="max-w-2xl mx-auto px-4">
         {/* Instructions Step */}
         {step === 'instructions' && (

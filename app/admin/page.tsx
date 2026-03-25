@@ -17,13 +17,19 @@ export default function AdminLoginPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErr(null);
     if (user === ADMIN_USER && pass === ADMIN_PASS) {
       if (isSupabaseConfigured()) {
-        try {
-          const supabase = getSupabaseClient();
-          await supabase?.auth.signInWithPassword({ email: ADMIN_USER, password: ADMIN_PASS });
-        } catch (e) {
-          // ignore; app can still use local flag for navigation
+        const supabase = getSupabaseClient();
+        if (!supabase) {
+          setErr('Supabase client is not available. Check environment variables and reload.');
+          return;
+        }
+
+        const { error } = await supabase.auth.signInWithPassword({ email: ADMIN_USER, password: ADMIN_PASS });
+        if (error) {
+          setErr('Admin Supabase sign-in failed. Please verify the Auth user/password for tcd_gcgc@gitam.edu.');
+          return;
         }
       }
       try {

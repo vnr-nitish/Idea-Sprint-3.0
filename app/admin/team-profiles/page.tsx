@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
+import SupabaseHealthBanner from '@/app/components/SupabaseHealthBanner';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, syncTeamMembers, syncTeamUsersPassword, updateTeam } from '@/lib/teamsBackend';
 import { deleteAllNocForTeam } from '@/lib/nocBackend';
@@ -1191,6 +1192,7 @@ export default function TeamProfilesPage() {
 
   return (
     <main className="min-h-screen bg-antique p-6">
+      <SupabaseHealthBanner />
       <div className="max-w-7xl mx-auto">
         {/* Page Header with border/shadow */}
         <div className="bg-white rounded-lg shadow-md border-2 border-gitam-300 p-6 mb-6">

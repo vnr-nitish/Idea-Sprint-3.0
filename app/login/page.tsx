@@ -3,9 +3,8 @@
 import { FormEvent, useCallback, useState } from 'react';
 import Link from 'next/link';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
-// import { loginWithEmailAndTeamPassword, loginWithIdentifierAndPassword } from '@/lib/teamsBackend';
-// import { listReportingSpocs } from '@/lib/reportingBackend';
-// import { setStoredSpocUser } from '@/lib/spocSession';
+import { listReportingSpocs } from '@/lib/reportingBackend';
+import { setStoredSpocUser } from '@/lib/spocSession';
 
 type SpocRecord = {
   id: string;
@@ -83,7 +82,7 @@ export default function LoginPage() {
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
     if (!formData.registrationNumber.trim()) {
-      newErrors.registrationNumber = 'Registration number is required';
+      newErrors.registrationNumber = 'Registration number or email is required';
     }
     if (!String(formData.mobile || '').trim()) {
       newErrors.mobile = 'Registered mobile number is required';
@@ -99,7 +98,32 @@ export default function LoginPage() {
       return;
     }
     setIsLoading(true);
+
     try {
+      // 1. Check if user is a SPOC via Database or LocalStorage
+      const inputEmail = formData.registrationNumber.toLowerCase().trim();
+      const inputPhone = canonicalPhone(formData.mobile);
+
+      const dbSpocs = await listReportingSpocs();
+      const allSpocs = dbSpocs && dbSpocs.length > 0 ? dbSpocs : readLocalSpocs();
+
+      const matchedSpoc = allSpocs.find(s =>
+        s.email.toLowerCase() === inputEmail &&
+        canonicalPhone(s.phone) === inputPhone
+      );
+
+      if (matchedSpoc) {
+        setStoredSpocUser({
+          id: matchedSpoc.id,
+          name: matchedSpoc.name,
+          email: matchedSpoc.email,
+          phone: matchedSpoc.phone
+        });
+        window.location.href = '/spoc/dashboard';
+        return;
+      }
+
+      // 2. If not SPOC, proceed with Member Login
       const res = await fetch('/api/auth/resolve-member', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -110,13 +134,19 @@ export default function LoginPage() {
       });
       const data = await res.json();
       if (data.ok && data.member && data.team) {
-        // Store session in localStorage (or use cookies/session as needed)
+        // Store session in localStorage
+        const sessionPayload = {
+          team: data.team,
+          memberId: data.member.id,
+          teamId: data.team.teamId,
+          identifier: formData.registrationNumber, // This is the user's input (registration number or email)
+        };
         localStorage.setItem('currentMember', JSON.stringify(data.member));
-        localStorage.setItem('currentTeam', JSON.stringify(data.team));
+        localStorage.setItem('currentTeam', JSON.stringify(sessionPayload));
         window.location.href = '/dashboard';
         return;
       } else {
-        setErrors({ mobile: 'Invalid registration number or mobile number.' });
+        setErrors({ mobile: 'Invalid registration number/email or mobile number.' });
       }
     } catch (e) {
       setErrors({ mobile: 'Login failed due to a temporary error. Please try again.' });
@@ -146,14 +176,14 @@ export default function LoginPage() {
 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
-                  <label htmlFor="registrationNumber" className="block text-sm font-semibold text-gitam-700 mb-2">Registration Number</label>
+                  <label htmlFor="registrationNumber" className="block text-sm font-semibold text-gitam-700 mb-2">Registration Number or Email</label>
                   <input
                     type="text"
                     id="registrationNumber"
                     name="registrationNumber"
                     value={formData.registrationNumber}
                     onChange={handleChange}
-                    placeholder="Enter your registration number"
+                    placeholder="Enter your registration number or email"
                     className={`hh-input ${errors.registrationNumber ? 'border-gitam-600 bg-antique-100' : ''}`}
                   />
                   {errors.registrationNumber && <p className="text-gitam-700 text-sm mt-1">⚠️ {errors.registrationNumber}</p>}
@@ -180,7 +210,7 @@ export default function LoginPage() {
 
               <p className="text-center text-gitam-700/80 mt-4">Don&apos;t have an account? <Link href="/register" className="text-gitam font-semibold hover:underline">Register here</Link></p>
             </div>
-            </div>
+          </div>
         </div>
       </div>
     </main>

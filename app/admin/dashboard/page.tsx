@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import SupabaseHealthBanner from '@/app/components/SupabaseHealthBanner';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { listTeamsWithMembers } from '@/lib/teamsBackend';
 
@@ -26,6 +27,19 @@ export default function AdminDashboard() {
   const [teamName, setTeamName] = useState('');
   const [teamCoupons, setTeamCoupons] = useState<any[] | null>(null);
 
+  const readTeamFallback = () => {
+    try {
+      const cached = JSON.parse(localStorage.getItem('registeredTeamsSupabaseCache') || '[]');
+      if (Array.isArray(cached) && cached.length) return cached;
+    } catch {}
+    try {
+      const reg = JSON.parse(localStorage.getItem('registeredTeams') || '[]');
+      return Array.isArray(reg) ? reg : [];
+    } catch {
+      return [];
+    }
+  };
+
   useEffect(() => {
     try {
       const a = localStorage.getItem('adminLoggedIn');
@@ -45,7 +59,7 @@ export default function AdminDashboard() {
         } catch (e) {
           console.warn(e);
         }
-        try { const reg = JSON.parse(localStorage.getItem('registeredTeams') || '[]'); setRegistered(reg); } catch { setRegistered([]); }
+        setRegistered(readTeamFallback());
       })();
       try { const ps = JSON.parse(localStorage.getItem('problemStatements') || '[]'); /* loaded later into state */ (window as any).__admin_problem_statements = Array.isArray(ps) ? ps : []; } catch { (window as any).__admin_problem_statements = []; }
       try { const s = JSON.parse(localStorage.getItem('reportingSpocs') || '[]'); (window as any).__admin_spocs = Array.isArray(s) ? s : []; } catch { (window as any).__admin_spocs = []; }
@@ -75,7 +89,7 @@ export default function AdminDashboard() {
       } catch (e) {
         console.warn(e);
       }
-      try { const reg = JSON.parse(localStorage.getItem('registeredTeams') || '[]'); setRegistered(reg); } catch { setRegistered([]); }
+      setRegistered(readTeamFallback());
     })();
   };
 
@@ -269,6 +283,7 @@ export default function AdminDashboard() {
 
   return (
     <main className="hh-page p-6">
+      <SupabaseHealthBanner />
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gitam-700">Admin Panel</h1>

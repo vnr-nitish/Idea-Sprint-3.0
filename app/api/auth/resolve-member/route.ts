@@ -12,6 +12,9 @@ const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T | nul
 
 const normalizeIdentifier = (value: string) => {
   const trimmed = String(value || '').trim();
+  if (trimmed.includes('@')) {
+    return trimmed.toLowerCase();
+  }
   const digitsOnly = trimmed.replace(/\D/g, '');
   if (digitsOnly.length >= 8 && digitsOnly.length <= 15) return digitsOnly;
   return trimmed.toLowerCase();
@@ -53,13 +56,16 @@ export async function POST(req: Request) {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
-    // Query for member by both registration number and phone number
+    // Query for member by registration number or email, and phone number
     const orQuery = [
-      `registration_number_normalized.eq.${identifier},phone_number_normalized.eq.${mobile}`,
-      `registration_number.eq.${rawIdentifier},phone_number_normalized.eq.${mobile}`,
-      `registration_number_normalized.eq.${identifier},phone_number.eq.${rawMobile}`,
-      `registration_number.eq.${rawIdentifier},phone_number.eq.${rawMobile}`
+      `registration_number_normalized.eq.${identifier}`,
+      `registration_number.eq.${rawIdentifier}`,
+      `email_normalized.eq.${identifier}`,
+      `email.eq.${rawIdentifier}`
     ].join(',');
+
+    // In Supabase, comma inside .or() acts as OR. To combine it with an AND (for the phone number),
+    // we use a .or() for the identifier and a .eq() / .or() for the mobile outside it.
     console.log('[resolve-member] Supabase query:', orQuery);
     const memberResult = await withTimeout(
       Promise.resolve().then(() =>
@@ -67,6 +73,7 @@ export async function POST(req: Request) {
           .from('members')
           .select('id, team_id, name, email, phone_number, email_normalized, phone_number_normalized, registration_number, registration_number_normalized')
           .or(orQuery)
+          .or(`phone_number_normalized.eq.${mobile},phone_number.eq.${rawMobile}`)
           .limit(1)
       ),
       QUERY_TIMEOUT_MS

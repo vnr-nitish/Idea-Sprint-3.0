@@ -42,10 +42,17 @@ export default function DashboardPage() {
       let hasLocalSnapshot = false;
       try {
         const snapshot = JSON.parse(localStorage.getItem('currentTeam') || 'null');
-        if (snapshot?.team) {
-          hasLocalSnapshot = true;
-          setTeamData(snapshot.team);
-          setIdentifier(snapshot.identifier || snapshot.identifierNormalized || "");
+        if (snapshot) {
+          if (snapshot.team) {
+            hasLocalSnapshot = true;
+            setTeamData(snapshot.team);
+            setIdentifier(snapshot.identifier || snapshot.identifierNormalized || "");
+          } else if (snapshot.teamId) {
+            // Migrated logic
+            hasLocalSnapshot = true;
+            setTeamData(snapshot);
+            setIdentifier(""); // wait for refresh
+          }
         }
       } catch {
         // ignore local parse issues
@@ -74,14 +81,24 @@ export default function DashboardPage() {
       }
     };
 
-    window.addEventListener('storage', onStorage);
-    const poll = setInterval(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        void load();
+      }
+    };
+
+    const onFocus = () => {
       void load();
-    }, 2000);
+    };
+
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       window.removeEventListener('storage', onStorage);
-      clearInterval(poll);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
@@ -113,9 +130,8 @@ export default function DashboardPage() {
         {teamData.members.map((m: TeamMember, idx: number) => (
           <div
             key={idx}
-            className={`p-4 rounded border ${
-              (m.email || "").toLowerCase() === (identifier || "").toLowerCase() ? "border-gitam-600 bg-gitam-50" : "border-gitam-100 bg-antique-50"
-            }`}
+            className={`p-4 rounded border ${(m.email || "").toLowerCase() === (identifier || "").toLowerCase() ? "border-gitam-600 bg-gitam-50" : "border-gitam-100 bg-antique-50"
+              }`}
           >
             <p className="font-semibold">{idx === 0 ? "Team Lead" : `Member ${idx}`}: {m.name}</p>
             <p className="text-sm">Email: {m.email}</p>
@@ -269,47 +285,47 @@ export default function DashboardPage() {
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-          <button onClick={() => { setActive('profile'); router.push('/dashboard/profile'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='profile' ? 'ring-4 ring-gitam/20' : ''}`}>
+          <button onClick={() => { setActive('profile'); router.push('/dashboard/profile'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active === 'profile' ? 'ring-4 ring-gitam/20' : ''}`}>
             <div className="w-14 h-14 rounded-full border-2 border-gitam-600 bg-antique flex items-center justify-center text-2xl shadow-sm">👥</div>
             <div className="mt-3 text-gitam-700">Team Profile</div>
           </button>
 
-          <button onClick={() => { setActive('food'); router.push('/dashboard/food'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='food' ? 'ring-4 ring-gitam/20' : ''}`}>
+          <button onClick={() => { setActive('food'); router.push('/dashboard/food'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active === 'food' ? 'ring-4 ring-gitam/20' : ''}`}>
             <div className="w-14 h-14 rounded-full border-2 border-gitam-600 bg-antique flex items-center justify-center text-2xl shadow-sm">🍽️</div>
             <div className="mt-3 text-gitam-700">Food Coupons</div>
           </button>
 
-          <button onClick={() => { setActive('noc'); router.push('/dashboard/noc'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='noc' ? 'ring-4 ring-gitam/20' : ''}`}>
+          <button onClick={() => { setActive('noc'); router.push('/dashboard/noc'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active === 'noc' ? 'ring-4 ring-gitam/20' : ''}`}>
             <div className="w-14 h-14 rounded-full border-2 border-gitam-600 bg-antique flex items-center justify-center text-2xl shadow-sm">📄</div>
             <div className="mt-3 text-gitam-700">NOC Upload</div>
           </button>
 
-          <button onClick={() => { setActive('ppt'); router.push('/dashboard/ppt'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='ppt' ? 'ring-4 ring-gitam/20' : ''}`}>
+          <button onClick={() => { setActive('ppt'); router.push('/dashboard/ppt'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active === 'ppt' ? 'ring-4 ring-gitam/20' : ''}`}>
             <div className="w-14 h-14 rounded-full border-2 border-gitam-600 bg-antique flex items-center justify-center text-2xl shadow-sm">📊</div>
             <div className="mt-3 text-gitam-700">PPT Submission</div>
           </button>
 
-          <button onClick={() => { setActive('problem'); router.push('/dashboard/problem'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='problem' ? 'ring-4 ring-gitam/20' : ''}`}>
+          <button onClick={() => { setActive('problem'); router.push('/dashboard/problem'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active === 'problem' ? 'ring-4 ring-gitam/20' : ''}`}>
             <div className="w-14 h-14 rounded-full border-2 border-gitam-600 bg-antique flex items-center justify-center text-2xl shadow-sm">🧩</div>
             <div className="mt-3 text-gitam-700">Problem Statement</div>
           </button>
 
-          <button onClick={() => { setActive('reporting'); router.push('/dashboard/reporting'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='reporting' ? 'ring-4 ring-gitam/20' : ''}`}>
+          <button onClick={() => { setActive('reporting'); router.push('/dashboard/reporting'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active === 'reporting' ? 'ring-4 ring-gitam/20' : ''}`}>
             <div className="w-14 h-14 rounded-full border-2 border-gitam-600 bg-antique flex items-center justify-center text-2xl shadow-sm">🗓️</div>
             <div className="mt-3 text-gitam-700">Reporting Details</div>
           </button>
 
-          <button onClick={() => { setActive('spoc'); router.push('/dashboard/spoc'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='spoc' ? 'ring-4 ring-gitam/20' : ''}`}>
+          <button onClick={() => { setActive('spoc'); router.push('/dashboard/spoc'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active === 'spoc' ? 'ring-4 ring-gitam/20' : ''}`}>
             <div className="w-14 h-14 rounded-full border-2 border-gitam-600 bg-antique flex items-center justify-center text-2xl shadow-sm">🧑‍💼</div>
             <div className="mt-3 text-gitam-700">SPOC</div>
           </button>
 
-          <button onClick={() => { setActive('idCardsCertificates'); router.push('/dashboard/id-cards-certificates'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='idCardsCertificates' ? 'ring-4 ring-gitam/20' : ''}`}>
+          <button onClick={() => { setActive('idCardsCertificates'); router.push('/dashboard/id-cards-certificates'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active === 'idCardsCertificates' ? 'ring-4 ring-gitam/20' : ''}`}>
             <div className="w-14 h-14 rounded-full border-2 border-gitam-600 bg-antique flex items-center justify-center text-2xl shadow-sm">🪪</div>
             <div className="mt-3 text-gitam-700">ID Card &amp; Certificates</div>
           </button>
 
-          <button onClick={() => { setActive('others'); router.push('/dashboard/others'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active==='others' ? 'ring-4 ring-gitam/20' : ''}`}>
+          <button onClick={() => { setActive('others'); router.push('/dashboard/others'); }} className={`col-span-1 p-4 bg-antique-50 hover:bg-gitam-50 rounded-lg border-2 border-gitam-300 flex flex-col items-center justify-center ${active === 'others' ? 'ring-4 ring-gitam/20' : ''}`}>
             <div className="w-14 h-14 rounded-full border-2 border-gitam-600 bg-antique flex items-center justify-center text-2xl shadow-sm">🔗</div>
             <div className="mt-3 text-gitam-700">Others</div>
           </button>
