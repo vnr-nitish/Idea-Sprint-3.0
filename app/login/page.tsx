@@ -1,11 +1,11 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { FormEvent, useCallback, useState } from 'react';
 import Link from 'next/link';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
-import { loginWithEmailAndTeamPassword, loginWithIdentifierAndPassword } from '@/lib/teamsBackend';
-import { listReportingSpocs } from '@/lib/reportingBackend';
-import { setStoredSpocUser } from '@/lib/spocSession';
+// import { loginWithEmailAndTeamPassword, loginWithIdentifierAndPassword } from '@/lib/teamsBackend';
+// import { listReportingSpocs } from '@/lib/reportingBackend';
+// import { setStoredSpocUser } from '@/lib/spocSession';
 
 type SpocRecord = {
   id: string;
@@ -57,113 +57,14 @@ const withTimeout = async <T,>(promise: Promise<T>, ms: number): Promise<T | nul
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
-    identifier: '',
+    registrationNumber: '',
     mobile: '',
   });
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
-  const [infoMessage, setInfoMessage] = useState<string>('');
 
-  const normalizeId = useCallback((value: string) => (value || '').trim().toLowerCase(), []);
-
-  useEffect(() => {
-    // Dev-only: seed demo team when visiting /login?seed=1
-    try {
-      if (process.env.NODE_ENV === 'production') return;
-      if (typeof window === 'undefined') return;
-      const params = new URLSearchParams(window.location.search);
-      if (params.get('seed') !== '1') return;
-
-      const demoTeam = {
-        teamName: 'Demo Team',
-        domain: 'AI/ML',
-        teamPassword: 'Demo@1234',
-        teamSize: 5,
-        branch: 'CSE',
-        program: 'B.Tech',
-        programOther: '',
-        members: [
-          {
-            name: 'Demo Lead',
-            registrationNumber: '24HACK001',
-            email: 'demo.lead@gitam.in',
-            phoneNumber: '9000000001',
-            school: 'School of CSE',
-            program: 'B.Tech',
-            programOther: '',
-            branch: 'CSE',
-            campus: 'Visakhapatnam',
-            stay: 'Hostel',
-            yearOfStudy: '3rd Year',
-          },
-          {
-            name: 'Demo Member',
-            registrationNumber: '24HACK002',
-            email: 'demo.member@gitam.in',
-            phoneNumber: '9000000002',
-            school: 'School of CSE',
-            program: 'B.Tech',
-            programOther: '',
-            branch: 'CSE',
-            campus: 'Visakhapatnam',
-            stay: 'Hostel',
-            yearOfStudy: '3rd Year',
-          },
-          {
-            name: 'Demo Member 2',
-            registrationNumber: '24HACK003',
-            email: 'demo.member2@gitam.in',
-            phoneNumber: '9000000003',
-            school: 'School of CSE',
-            program: 'B.Tech',
-            programOther: '',
-            branch: 'CSE',
-            campus: 'Visakhapatnam',
-            stay: 'Hostel',
-            yearOfStudy: '3rd Year',
-          },
-          {
-            name: 'Demo Member 3',
-            registrationNumber: '24HACK004',
-            email: 'demo.member3@gitam.in',
-            phoneNumber: '9000000004',
-            school: 'School of CSE',
-            program: 'B.Tech',
-            programOther: '',
-            branch: 'CSE',
-            campus: 'Visakhapatnam',
-            stay: 'Hostel',
-            yearOfStudy: '3rd Year',
-          },
-          {
-            name: 'Demo Member 4',
-            registrationNumber: '24HACK005',
-            email: 'demo.member4@gitam.in',
-            phoneNumber: '9000000005',
-            school: 'School of CSE',
-            program: 'B.Tech',
-            programOther: '',
-            branch: 'CSE',
-            campus: 'Visakhapatnam',
-            stay: 'Hostel',
-            yearOfStudy: '3rd Year',
-          },
-        ],
-        selectedProblem: null,
-      };
-
-      localStorage.setItem('registeredTeams', JSON.stringify([demoTeam]));
-      localStorage.setItem('currentTeam', JSON.stringify({ team: demoTeam, identifier: normalizeId(demoTeam.members[0].email) }));
-
-      setFormData({ identifier: 'demo.lead@gitam.in', mobile: '9000000001' });
-      setInfoMessage('Demo data seeded (dev only). Signing in now...');
-      // Auto-redirect in dev so the user lands on dashboard immediately
-      setTimeout(() => { window.location.href = '/dashboard'; }, 300);
-    } catch (e) {
-      console.warn(e);
-    }
-  }, [normalizeId]);
+  // const normalizeId = useCallback((value: string) => (value || '').trim().toLowerCase(), []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -181,225 +82,47 @@ export default function LoginPage() {
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-
-    if (!formData.identifier.trim()) {
-      newErrors.identifier = 'Email or registration number is required';
+    if (!formData.registrationNumber.trim()) {
+      newErrors.registrationNumber = 'Registration number is required';
     }
-
     if (!String(formData.mobile || '').trim()) {
-      newErrors.mobile = 'Password or registered mobile number is required';
+      newErrors.mobile = 'Registered mobile number is required';
     }
-
     return newErrors;
   };
 
   const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
     const newErrors = validateForm();
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
-
     setIsLoading(true);
-    setInfoMessage('');
-
     try {
-      const idRaw = normalizeId(formData.identifier);
-      const emailRaw = String(formData.identifier || '').trim().toLowerCase();
-      const mobileRaw = String(formData.mobile || '').trim();
-      const mobileCanonical = canonicalPhone(mobileRaw);
-
-      // Temporary emergency login path: server-side hardcoded credentials
-      // for SPOCs and selected team members/leads.
-      try {
-        const tempLoginRes = await withTimeout(
-          fetch('/api/auth/temp-login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ identifier: formData.identifier, secret: formData.mobile }),
-          }),
-          7000
-        );
-
-        if (tempLoginRes?.ok) {
-          const payload = await tempLoginRes.json().catch(() => null);
-          if (payload?.ok && payload?.role === 'spoc' && payload?.spoc?.email) {
-            setStoredSpocUser({
-              id: String(payload.spoc.id || payload.spoc.email),
-              name: String(payload.spoc.name || ''),
-              email: String(payload.spoc.email || '').toLowerCase(),
-              phone: String(payload.spoc.phone || ''),
-            });
-            window.location.href = '/spoc/dashboard';
-            return;
-          }
-
-          if (payload?.ok && payload?.role === 'team' && payload?.team) {
-            localStorage.setItem(
-              'currentTeam',
-              JSON.stringify({
-                team: payload.team,
-                identifier: normalizeId(formData.identifier),
-                identifierNormalized: normalizeId(formData.identifier),
-                memberId: String(payload?.member?.id || ''),
-                teamId: String(payload?.team?.teamId || ''),
-              })
-            );
-            window.location.href = '/dashboard';
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn(e);
-      }
-
-      if (isSupabaseConfigured()) {
-        // Preferred team login path: email + team password via Supabase Auth.
-        try {
-          const teamSession = await withTimeout(
-            loginWithEmailAndTeamPassword(formData.identifier, formData.mobile),
-            LOGIN_REQUEST_TIMEOUT_MS
-          );
-          if (teamSession?.team) {
-            localStorage.setItem(
-              'currentTeam',
-              JSON.stringify({
-                team: teamSession.team,
-                identifier: teamSession.identifierNormalized,
-                identifierNormalized: teamSession.identifierNormalized,
-                memberId: teamSession.memberId,
-                teamId: teamSession.teamId,
-              })
-            );
-            window.location.href = '/dashboard';
-            return;
-          }
-        } catch (e) {
-          console.warn(e);
-        }
-
-        // Fast SPOC login from local snapshot first.
-        try {
-          const spocs: SpocRecord[] = readLocalSpocs();
-          localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
-
-          const matchedSpoc = spocs.find((s) => s.email === emailRaw);
-          if (matchedSpoc && isPhoneSecretMatch(String(matchedSpoc.phone || ''), mobileRaw)) {
-            setStoredSpocUser({
-              id: matchedSpoc.id,
-              name: matchedSpoc.name,
-              email: matchedSpoc.email,
-              phone: matchedSpoc.phone,
-            });
-            window.location.href = '/spoc/dashboard';
-            return;
-          }
-        } catch (e) {
-          console.warn(e);
-        }
-
-        try {
-          const session = await withTimeout(
-            loginWithIdentifierAndPassword(formData.identifier, formData.mobile),
-            LOGIN_REQUEST_TIMEOUT_MS
-          );
-          if (session?.team) {
-            localStorage.setItem(
-              'currentTeam',
-              JSON.stringify({
-                team: session.team,
-                identifier: session.identifierNormalized,
-                identifierNormalized: session.identifierNormalized,
-                memberId: session.memberId,
-                teamId: session.teamId,
-              })
-            );
-            window.location.href = '/dashboard';
-            return;
-          }
-        } catch (e) {
-          console.warn(e);
-        }
-
-        // SPOC login fallback via backend fetch only when team login did not succeed.
-        try {
-          const remoteSpocs = await withTimeout(listReportingSpocs(), 5000);
-          if (Array.isArray(remoteSpocs) && remoteSpocs.length) {
-            const spocs: SpocRecord[] = remoteSpocs
-              .map((s: any) => ({
-                id: String(s?.id || '').trim(),
-                name: String(s?.name || '').trim(),
-                email: String(s?.email || '').trim().toLowerCase(),
-                phone: String(s?.phone || '').trim(),
-              }))
-              .filter((s) => s.id && s.email);
-
-            localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
-            const matchedSpoc = spocs.find((s) => s.email === emailRaw);
-            if (matchedSpoc && isPhoneSecretMatch(String(matchedSpoc.phone || ''), mobileRaw)) {
-              setStoredSpocUser({
-                id: matchedSpoc.id,
-                name: matchedSpoc.name,
-                email: matchedSpoc.email,
-                phone: matchedSpoc.phone,
-              });
-              window.location.href = '/spoc/dashboard';
-              return;
-            }
-          }
-        } catch (e) {
-          console.warn(e);
-        }
-      }
-
-      // SPOC login fallback from local storage records.
-      try {
-        const spocs: SpocRecord[] = readLocalSpocs();
-        localStorage.setItem('reportingSpocs', JSON.stringify(spocs));
-        const matchedSpoc = spocs.find((s) => s.email === emailRaw);
-        if (matchedSpoc && isPhoneSecretMatch(String(matchedSpoc.phone || ''), mobileRaw)) {
-          setStoredSpocUser({
-            id: matchedSpoc.id,
-            name: matchedSpoc.name,
-            email: matchedSpoc.email,
-            phone: matchedSpoc.phone,
-          });
-          window.location.href = '/spoc/dashboard';
-          return;
-        }
-      } catch (e) {
-        console.warn(e);
-      }
-
-      let registered = [];
-      try { registered = JSON.parse(localStorage.getItem('registeredTeams') || '[]'); } catch { registered = []; }
-      const id = normalizeId(formData.identifier);
-      const match = registered.find((team: any) => {
-        return team.members.some((m: any) => {
-          const tokens = [m.email, m.registrationNumber].map((s: string) => normalizeId(s || ''));
-          if (!tokens.includes(id)) return false;
-
-          return isPhoneSecretMatch(String(m.phoneNumber || ''), mobileRaw);
-        });
+      const res = await fetch('/api/auth/resolve-member', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          identifier: formData.registrationNumber,
+          mobile: formData.mobile,
+        }),
       });
-
-      if (match) {
-        localStorage.setItem('currentTeam', JSON.stringify({ team: match, identifier: id, identifierNormalized: id }));
+      const data = await res.json();
+      if (data.ok && data.member && data.team) {
+        // Store session in localStorage (or use cookies/session as needed)
+        localStorage.setItem('currentMember', JSON.stringify(data.member));
+        localStorage.setItem('currentTeam', JSON.stringify(data.team));
         window.location.href = '/dashboard';
+        return;
       } else {
-        alert('Invalid credentials. Please check identifier and registered mobile number.');
-        setIsLoading(false);
+        setErrors({ mobile: 'Invalid registration number or mobile number.' });
       }
     } catch (e) {
-      console.warn(e);
       setErrors({ mobile: 'Login failed due to a temporary error. Please try again.' });
-      setIsLoading(false);
     }
+    setIsLoading(false);
   };
-
-  // demo seeding removed from UI for privacy
 
   const [activePanel, setActivePanel] = useState<string | null>(null);
 
@@ -420,24 +143,20 @@ export default function LoginPage() {
               <h2 className="text-2xl font-bold text-gitam-700 mb-2">Welcome Back</h2>
               <p className="text-gitam-700/75 mb-6">Sign in to your hackathon account</p>
 
+
               <form onSubmit={handleSubmit} className="space-y-4">
-                {infoMessage ? (
-                  <div className="text-sm rounded-lg px-3 py-2 bg-gitam-50 text-gitam-700 border border-gitam-100">
-                    {infoMessage}
-                  </div>
-                ) : null}
                 <div>
-                  <label htmlFor="identifier" className="block text-sm font-semibold text-gitam-700 mb-2">Email or Registration Number</label>
+                  <label htmlFor="registrationNumber" className="block text-sm font-semibold text-gitam-700 mb-2">Registration Number</label>
                   <input
                     type="text"
-                    id="identifier"
-                    name="identifier"
-                    value={formData.identifier}
+                    id="registrationNumber"
+                    name="registrationNumber"
+                    value={formData.registrationNumber}
                     onChange={handleChange}
-                    placeholder="you@example.com or registration number"
-                    className={`hh-input ${errors.identifier ? 'border-gitam-600 bg-antique-100' : ''}`}
+                    placeholder="Enter your registration number"
+                    className={`hh-input ${errors.registrationNumber ? 'border-gitam-600 bg-antique-100' : ''}`}
                   />
-                  {errors.identifier && <p className="text-gitam-700 text-sm mt-1">⚠️ {errors.identifier}</p>}
+                  {errors.registrationNumber && <p className="text-gitam-700 text-sm mt-1">⚠️ {errors.registrationNumber}</p>}
                 </div>
 
                 <div>
