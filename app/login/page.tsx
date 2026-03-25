@@ -2,7 +2,6 @@
 
 import { FormEvent, useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import SupabaseHealthBanner from '@/app/components/SupabaseHealthBanner';
 import { getSupabaseClient, isSupabaseConfigured } from '@/lib/supabaseClient';
 import { loginWithIdentifierAndPassword } from '@/lib/teamsBackend';
 import { listReportingSpocs } from '@/lib/reportingBackend';
@@ -54,15 +53,17 @@ const buildSpocPassword = (name: string, phone: string) => {
 
 const normalizePhone = (value: string) => String(value || '').replace(/\D/g, '');
 
+const canonicalPhone = (value: string) => {
+  const digits = normalizePhone(value);
+  if (!digits) return '';
+  return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
 const isPhoneSecretMatch = (memberPhone: string, inputSecret: string) => {
-  const memberDigits = normalizePhone(memberPhone);
-  const inputDigits = normalizePhone(inputSecret);
+  const memberDigits = canonicalPhone(memberPhone);
+  const inputDigits = canonicalPhone(inputSecret);
   if (!memberDigits || !inputDigits) return false;
-  return (
-    memberDigits === inputDigits ||
-    memberDigits.endsWith(inputDigits) ||
-    inputDigits.endsWith(memberDigits)
-  );
+  return memberDigits === inputDigits;
 };
 
 const LOGIN_REQUEST_TIMEOUT_MS = 12000;
@@ -422,9 +423,7 @@ export default function LoginPage() {
   const togglePanel = (key: string) => setActivePanel(prev => prev === key ? null : key);
 
   return (
-    <main className="hh-page pb-12">
-      <SupabaseHealthBanner />
-      <div className="pt-20">
+    <main className="hh-page pt-20 pb-12">
       <div className="max-w-6xl mx-auto px-4">
         <div className="hh-card overflow-hidden">
           {/* Hero banner */}
@@ -485,7 +484,6 @@ export default function LoginPage() {
             </div>
             </div>
         </div>
-      </div>
       </div>
     </main>
   );

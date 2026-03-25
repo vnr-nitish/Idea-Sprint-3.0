@@ -40,6 +40,12 @@ const normalizePhone = (phone: string) => {
   return digitsOnly;
 };
 
+const canonicalPhone = (phone: string) => {
+  const digits = normalizePhone(phone);
+  if (!digits) return '';
+  return digits.length > 10 ? digits.slice(-10) : digits;
+};
+
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const TEAMS_CACHE_TTL_MS = 30 * 1000;
 const TEAMS_FALLBACK_CACHE_MAX_AGE_MS = 10 * 60 * 1000;
@@ -854,17 +860,16 @@ export const loginWithIdentifierAndPassword = async (identifierInput: string, pa
 
   // Fallback option: allow member's own phone number as the second credential.
   // This bypasses Auth-password drift while still tying access to an existing member identifier.
-  let memberPhoneDigits = normalizePhone(String(member.phone_number || ''));
+  let memberPhoneDigits = canonicalPhone(String(member.phone_number || ''));
   if (!memberPhoneDigits && resolvedTeamFromApi?.members?.length) {
     const matchedMember = resolvedTeamFromApi.members.find((m: any) => String(m?.id || '') === String(member.id || ''));
-    memberPhoneDigits = normalizePhone(String((matchedMember as any)?.phoneNumber || ''));
+    memberPhoneDigits = canonicalPhone(String((matchedMember as any)?.phoneNumber || ''));
   }
+  const loginSecretCanonical = canonicalPhone(String(password || ''));
   const phoneCredentialAccepted = !!(
-    loginSecretDigits &&
+    loginSecretCanonical &&
     memberPhoneDigits &&
-    (loginSecretDigits === memberPhoneDigits ||
-      memberPhoneDigits.endsWith(loginSecretDigits) ||
-      loginSecretDigits.endsWith(memberPhoneDigits))
+    loginSecretCanonical === memberPhoneDigits
   );
   if (phoneCredentialAccepted) {
     passwordVerified = true;
