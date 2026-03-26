@@ -1748,8 +1748,8 @@ export default function TeamProfilesPage() {
                     onClick={addMemberToTeam}
                     disabled={(teamDraft.members || []).length >= 4}
                     className={`w-full p-3 border-2 border-dashed rounded-lg font-semibold transition ${(teamDraft.members || []).length >= 4
-                        ? 'border-gray-300 text-gray-400 cursor-not-allowed'
-                        : 'border-gitam-400 text-gitam-700 hover:bg-gitam-50 hover:border-gitam-600'
+                      ? 'border-gray-300 text-gray-400 cursor-not-allowed'
+                      : 'border-gitam-400 text-gitam-700 hover:bg-gitam-50 hover:border-gitam-600'
                       }`}
                     title={(teamDraft.members || []).length >= 4 ? 'Maximum 4 members allowed' : 'Add a new member to this team'}
                   >
@@ -1771,8 +1771,8 @@ export default function TeamProfilesPage() {
                           onClick={deleteMemberFromTeam}
                           disabled={(teamDraft.members || []).length <= 3}
                           className={`px-3 py-1 rounded-lg font-semibold transition ${(teamDraft.members || []).length <= 3
-                              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                              : 'bg-red-600 text-white hover:bg-red-700'
+                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            : 'bg-red-600 text-white hover:bg-red-700'
                             }`}
                           title={(teamDraft.members || []).length <= 3 ? 'Minimum 3 members required' : 'Delete this member'}
                         >
