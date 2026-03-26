@@ -21,6 +21,7 @@ interface ProblemStatement {
   description: string;
   outcome: string;
   createdAt: string;
+  isHidden?: boolean;
 }
 
 export default function AdminProblemStatementsPage() {
@@ -362,6 +363,7 @@ export default function AdminProblemStatementsPage() {
         description,
         outcome,
         createdAt: new Date().toISOString(),
+        isHidden: false,
       };
       saveProblems([newPs, ...problems]);
       setDomain('');
@@ -436,6 +438,16 @@ export default function AdminProblemStatementsPage() {
       return true;
     });
   }, [problems, statementDomainFilter]);
+
+  // Only non-hidden problems for user-facing (legion) views
+  const visibleProblems = useMemo(() => problems.filter((p) => !p.isHidden), [problems]);
+
+  const toggleProblemVisibility = (id: string) => {
+    const next = problems.map((p) =>
+      p.id === id ? { ...p, isHidden: !p.isHidden } : p
+    );
+    saveProblems(next);
+  };
 
   useEffect(() => {
     if (selectedTeamsCount === 0 && bulkDeadlineInput) {
@@ -758,12 +770,13 @@ export default function AdminProblemStatementsPage() {
                   <p className="text-gitam-700/75">No problem statements created yet.</p>
                 ) : (
                   filteredProblems.map((ps) => (
-                    <div key={ps.id} className="border-2 border-gitam-200 rounded-lg p-4 hover:border-gitam-300">
+                    <div key={ps.id} className={`border-2 border-gitam-200 rounded-lg p-4 hover:border-gitam-300 ${ps.isHidden ? 'opacity-60' : ''}`}>
                       <div className="flex justify-between items-start gap-4 mb-2">
                         <div className="flex-1">
                           <div className="flex gap-2 items-center mb-2">
                             <span className="font-semibold text-gitam-700">{ps.code}</span>
                             <span className="text-xs bg-gitam-100 text-gitam-700 px-2 py-1 rounded">{ps.domain}</span>
+                            {ps.isHidden && <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Hidden</span>}
                           </div>
                           <p className="text-sm text-gitam-700">{ps.description}</p>
                           <p className="text-xs text-gitam-700/75 mt-2">
@@ -783,6 +796,12 @@ export default function AdminProblemStatementsPage() {
                             className="hh-btn-outline px-3 py-1 text-sm border-2"
                           >
                             Delete
+                          </button>
+                          <button
+                            onClick={() => toggleProblemVisibility(ps.id)}
+                            className={`hh-btn-outline px-3 py-1 text-sm border-2 ${ps.isHidden ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}
+                          >
+                            {ps.isHidden ? 'Unhide' : 'Hide'}
                           </button>
                         </div>
                       </div>
