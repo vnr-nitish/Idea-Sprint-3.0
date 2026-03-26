@@ -186,37 +186,58 @@ export default function TeamProfilesPage() {
 
   useEffect(() => {
     reloadRegistered();
-    // Load attendance from localStorage
-    try {
-      const loadedTeamAttendance: Record<string, string> = {};
-      const loadedMemberAttendance: Record<string, string> = {};
-      const loadedMemberDaybreak: Record<string, string> = {};
-      const teams = JSON.parse(localStorage.getItem('registeredTeams') || '[]');
-      teams.forEach((t: any) => {
-        const teamKey = `team_attendance_${t.teamName}`;
-        const stored = localStorage.getItem(teamKey);
-        if (stored) {
-          loadedTeamAttendance[t.teamName] = stored;
+    // Load attendance from Supabase for today
+    const loadAttendanceFromSupabase = async () => {
+      if (isSupabaseConfigured()) {
+        const today = new Date().toISOString().slice(0, 10);
+        const records = await import('@/lib/teamsBackend').then(m => m.listAttendance(today));
+        const loadedTeamAttendance: Record<string, string> = {};
+        const loadedMemberAttendance: Record<string, string> = {};
+        if (Array.isArray(records)) {
+          for (const rec of records) {
+            if (rec.memberId) {
+              loadedMemberAttendance[`member_attendance_${rec.teamName}_${rec.memberId}`] = rec.status;
+            } else {
+              loadedTeamAttendance[rec.teamName] = rec.status;
+            }
+          }
         }
-        // Load member-level overrides
-        (t.members || []).forEach((m: any, idx: number) => {
-          const memberKey = `member_attendance_${t.teamName}_${m.email || m.registrationNumber || idx}`;
-          const memberStored = localStorage.getItem(memberKey);
-          if (memberStored) {
-            loadedMemberAttendance[memberKey] = memberStored;
-          }
-
-          const daybreakKey = `member_daybreak_${t.teamName}_${m.email || m.registrationNumber || idx}`;
-          const daybreakStored = localStorage.getItem(daybreakKey);
-          if (daybreakStored) {
-            loadedMemberDaybreak[daybreakKey] = daybreakStored;
-          }
-        });
-      });
-      setTeamAttendance(loadedTeamAttendance);
-      setMemberAttendance(loadedMemberAttendance);
-      setMemberDaybreak(loadedMemberDaybreak);
-    } catch {}
+        setTeamAttendance(loadedTeamAttendance);
+        setMemberAttendance(loadedMemberAttendance);
+      } else {
+        // Fallback: Load from localStorage
+        try {
+          const loadedTeamAttendance: Record<string, string> = {};
+          const loadedMemberAttendance: Record<string, string> = {};
+          const loadedMemberDaybreak: Record<string, string> = {};
+          const teams = JSON.parse(localStorage.getItem('registeredTeams') || '[]');
+          teams.forEach((t: any) => {
+            const teamKey = `team_attendance_${t.teamName}`;
+            const stored = localStorage.getItem(teamKey);
+            if (stored) {
+              loadedTeamAttendance[t.teamName] = stored;
+            }
+            // Load member-level overrides
+            (t.members || []).forEach((m: any, idx: number) => {
+              const memberKey = `member_attendance_${t.teamName}_${m.email || m.registrationNumber || idx}`;
+              const memberStored = localStorage.getItem(memberKey);
+              if (memberStored) {
+                loadedMemberAttendance[memberKey] = memberStored;
+              }
+              const daybreakKey = `member_daybreak_${t.teamName}_${m.email || m.registrationNumber || idx}`;
+              const daybreakStored = localStorage.getItem(daybreakKey);
+              if (daybreakStored) {
+                loadedMemberDaybreak[daybreakKey] = daybreakStored;
+              }
+            });
+          });
+          setTeamAttendance(loadedTeamAttendance);
+          setMemberAttendance(loadedMemberAttendance);
+          setMemberDaybreak(loadedMemberDaybreak);
+        } catch {}
+      }
+    };
+    loadAttendanceFromSupabase();
 
     // Load optional per-team lead overrides
     try {
