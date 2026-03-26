@@ -62,7 +62,14 @@ export default function AdminAttendancePage() {
 
   const toggleAttendance = (m:any, status:'present'|'absent') => {
     const key = makeMemberKey(m.teamName, m);
-    setAttendanceMap(prev => ({ ...prev, [key]: status }));
+    setAttendanceMap(prev => {
+      const next = { ...prev, [key]: status };
+      // Auto-save immediately so data persists on back/reload
+      try {
+        localStorage.setItem(`attendance_${date}`, JSON.stringify(next));
+      } catch (e) { console.warn('Auto-save attendance failed', e); }
+      return next;
+    });
   };
 
   const saveAttendance = () => {

@@ -322,51 +322,43 @@ export default function ProfilePage() {
                         <div>
                           <h3 className="text-3xl font-bold text-gitam-700">{selectedLabel}</h3>
                         </div>
-                        {isLead ? (
-                          <button
-                            onClick={saveSelectedMember}
-                            className="hh-btn px-5 py-2"
-                            disabled={saving}
-                          >
-                            {saving ? 'Saving...' : 'Save'}
-                          </button>
-                        ) : null}
+                        <span className="text-xs text-gitam-700/60 italic">View only</span>
                       </div>
 
                       <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <div className="text-xs text-gitam-700/60">Campus</div>
-                          <select value={m.campus || ''} onChange={(e) => updateMemberField(selectedIndex, 'campus', e.target.value)} disabled={!isLead} className="hh-input text-sm">
+                          <select value={m.campus || ''} disabled className="hh-input text-sm">
                             <option value="" disabled hidden>Select Campus</option>
                             {campusOptions.map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
                           </select>
                         </div>
                         <div>
                           <div className="text-xs text-gitam-700/60">Full Name</div>
-                          <input value={m.name || ''} onChange={(e) => updateMemberField(selectedIndex, 'name', e.target.value)} disabled={!isLead} className="hh-input text-sm" />
+                          <input value={m.name || ''} readOnly disabled className="hh-input text-sm" />
                         </div>
                         <div>
                           <div className="text-xs text-gitam-700/60">Registration Number</div>
-                          <input value={m.registrationNumber || ''} onChange={(e) => updateMemberField(selectedIndex, 'registrationNumber', e.target.value)} disabled={!isLead} className="hh-input text-sm" />
+                          <input value={m.registrationNumber || ''} readOnly disabled className="hh-input text-sm" />
                         </div>
                         <div>
                           <div className="text-xs text-gitam-700/60">GITAM Mail</div>
-                          <input value={m.email || ''} onChange={(e) => updateMemberField(selectedIndex, 'email', e.target.value)} disabled={!isLead} className="hh-input text-sm" />
+                          <input value={m.email || ''} readOnly disabled className="hh-input text-sm" />
                         </div>
                         <div>
                           <div className="text-xs text-gitam-700/60">Phone Number</div>
-                          <input value={m.phoneNumber || m.phone || ''} onChange={(e) => updateMemberField(selectedIndex, 'phoneNumber', e.target.value)} disabled={!isLead} className="hh-input text-sm" />
+                          <input value={m.phoneNumber || m.phone || ''} readOnly disabled className="hh-input text-sm" />
                         </div>
                         <div>
                           <div className="text-xs text-gitam-700/60">School</div>
-                          <select value={m.school || ''} onChange={(e) => updateMemberField(selectedIndex, 'school', e.target.value)} disabled={!isLead} className="hh-input text-sm">
+                          <select value={m.school || ''} disabled className="hh-input text-sm">
                             <option value="" disabled hidden>Select School</option>
                             {schoolOptions.map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
                           </select>
                         </div>
                         <div>
                           <div className="text-xs text-gitam-700/60">Program</div>
-                          <select value={m.program || ''} onChange={(e) => updateMemberField(selectedIndex, 'program', e.target.value)} disabled={!isLead} className="hh-input text-sm">
+                          <select value={m.program || ''} disabled className="hh-input text-sm">
                             <option value="" disabled hidden>Select Program</option>
                             {programOptions.map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
                           </select>
@@ -374,23 +366,23 @@ export default function ProfilePage() {
                         {isOtherProgram && (
                           <div>
                             <div className="text-xs text-gitam-700/60">Specify Your Program</div>
-                            <input value={m.programOther || ''} onChange={(e) => updateMemberField(selectedIndex, 'programOther', e.target.value)} disabled={!isLead} className="hh-input text-sm" placeholder="Enter your program" />
+                            <input value={m.programOther || ''} readOnly disabled className="hh-input text-sm" placeholder="Enter your program" />
                           </div>
                         )}
                         <div>
                           <div className="text-xs text-gitam-700/60">Branch</div>
-                          <input value={m.branch || ''} onChange={(e) => updateMemberField(selectedIndex, 'branch', e.target.value)} disabled={!isLead} className="hh-input text-sm" placeholder="Branch (e.g., CSE, ECE)" />
+                          <input value={m.branch || ''} readOnly disabled className="hh-input text-sm" placeholder="Branch (e.g., CSE, ECE)" />
                         </div>
                         <div>
                           <div className="text-xs text-gitam-700/60">Year of Study</div>
-                          <select value={m.yearOfStudy || ''} onChange={(e) => updateMemberField(selectedIndex, 'yearOfStudy', e.target.value)} disabled={!isLead} className="hh-input text-sm">
+                          <select value={m.yearOfStudy || ''} disabled className="hh-input text-sm">
                             <option value="" disabled hidden>Select Year</option>
                             {yearOptions.map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
                           </select>
                         </div>
                         <div>
                           <div className="text-xs text-gitam-700/60">Stay Type</div>
-                          <select value={m.stay || ''} onChange={(e) => updateMemberField(selectedIndex, 'stay', e.target.value)} disabled={!isLead} className="hh-input text-sm">
+                          <select value={m.stay || ''} disabled className="hh-input text-sm">
                             <option value="" disabled hidden>Select Stay Type</option>
                             {stayOptions.map((opt) => (<option key={opt} value={opt}>{opt}</option>))}
                           </select>

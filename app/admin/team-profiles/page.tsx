@@ -1,8 +1,9 @@
- 'use client';
+'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
+import SupabaseHealthBanner from '@/app/components/SupabaseHealthBanner';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
 import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, syncTeamMembers, syncTeamUsersPassword, updateTeam } from '@/lib/teamsBackend';
 import { deleteAllNocForTeam } from '@/lib/nocBackend';
@@ -26,7 +27,7 @@ export default function TeamProfilesPage() {
   const [positionFilter, setPositionFilter] = useState('All');
   const [stayFilter, setStayFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTab, setSelectedTab] = useState<'teams'|'individuals'>('teams');
+  const [selectedTab, setSelectedTab] = useState<'teams' | 'individuals'>('teams');
   const [attendanceFilter, setAttendanceFilter] = useState('All');
   const [daybreakFilter, setDaybreakFilter] = useState('All');
   const [teamAttendance, setTeamAttendance] = useState<Record<string, string>>({});
@@ -159,7 +160,7 @@ export default function TeamProfilesPage() {
     try {
       const cached = JSON.parse(localStorage.getItem('registeredTeamsSupabaseCache') || '[]');
       if (Array.isArray(cached) && cached.length) return cached;
-    } catch {}
+    } catch { }
     try {
       const reg = JSON.parse(localStorage.getItem('registeredTeams') || '[]');
       return Array.isArray(reg) ? reg : [];
@@ -215,7 +216,7 @@ export default function TeamProfilesPage() {
       setTeamAttendance(loadedTeamAttendance);
       setMemberAttendance(loadedMemberAttendance);
       setMemberDaybreak(loadedMemberDaybreak);
-    } catch {}
+    } catch { }
 
     // Load optional per-team lead overrides
     try {
@@ -223,7 +224,7 @@ export default function TeamProfilesPage() {
       if (storedLeadOverrides && typeof storedLeadOverrides === 'object') {
         setTeamLeadOverrides(storedLeadOverrides);
       }
-    } catch {}
+    } catch { }
 
     // Load reporting assignment map for venue/SPOC display in tables and filters.
     let localReportingAssignments: Record<string, any> = {};
@@ -233,7 +234,7 @@ export default function TeamProfilesPage() {
         localReportingAssignments = map;
         setReportingAssignmentsMap(map);
       }
-    } catch {}
+    } catch { }
 
     if (isSupabaseConfigured()) {
       void (async () => {
@@ -252,6 +253,40 @@ export default function TeamProfilesPage() {
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Re-load attendance whenever the teams list changes (e.g. after Supabase loads teams async).
+  // This is needed because the initial mount load reads localStorage 'registeredTeams' which may
+  // be empty when teams come from Supabase, so attendance keys go unloaded until this runs.
+  useEffect(() => {
+    if (!registered || registered.length === 0) return;
+    try {
+      const loadedTeamAttendance: Record<string, string> = {};
+      const loadedMemberAttendance: Record<string, string> = {};
+      const loadedMemberDaybreak: Record<string, string> = {};
+      registered.forEach((t: any) => {
+        const teamKey = `team_attendance_${t.teamName}`;
+        const stored = localStorage.getItem(teamKey);
+        if (stored) {
+          loadedTeamAttendance[t.teamName] = stored;
+        }
+        (t.members || []).forEach((m: any, idx: number) => {
+          const memberKey = `member_attendance_${t.teamName}_${m.email || m.registrationNumber || idx}`;
+          const memberStored = localStorage.getItem(memberKey);
+          if (memberStored) {
+            loadedMemberAttendance[memberKey] = memberStored;
+          }
+          const daybreakKey = `member_daybreak_${t.teamName}_${m.email || m.registrationNumber || idx}`;
+          const daybreakStored = localStorage.getItem(daybreakKey);
+          if (daybreakStored) {
+            loadedMemberDaybreak[daybreakKey] = daybreakStored;
+          }
+        });
+      });
+      setTeamAttendance(prev => ({ ...loadedTeamAttendance, ...prev }));
+      setMemberAttendance(prev => ({ ...loadedMemberAttendance, ...prev }));
+      setMemberDaybreak(prev => ({ ...loadedMemberDaybreak, ...prev }));
+    } catch { }
+  }, [registered]);
 
   useEffect(() => {
     const onStorage = (event: StorageEvent) => {
@@ -316,7 +351,7 @@ export default function TeamProfilesPage() {
     setTeamLeadOverrides(next);
     try {
       localStorage.setItem('teamLeadOverrides', JSON.stringify(next));
-    } catch {}
+    } catch { }
   };
 
   const setTeamLead = (teamName: string, members: any[], leadIndex: number) => {
@@ -344,8 +379,8 @@ export default function TeamProfilesPage() {
     return matched || members[0];
   };
 
-  const openTeamEditor = (team:any, initialMemberIndex: number = 0) => {
-    const idx = registered.findIndex((r:any) => String(r.teamName) === String(team.teamName));
+  const openTeamEditor = (team: any, initialMemberIndex: number = 0) => {
+    const idx = registered.findIndex((r: any) => String(r.teamName) === String(team.teamName));
     if (idx === -1) {
       alert('Team not found');
       return;
@@ -376,7 +411,7 @@ export default function TeamProfilesPage() {
     setSelectedMemberIndex(0);
   };
 
-  const persistRegistered = (next:any[]) => {
+  const persistRegistered = (next: any[]) => {
     setRegistered(next);
     if (!isSupabaseConfigured()) {
       try { localStorage.setItem('registeredTeams', JSON.stringify(next)); } catch { }
@@ -400,7 +435,7 @@ export default function TeamProfilesPage() {
     return missing;
   };
 
-  const saveMember = async (memberIdx:number) => {
+  const saveMember = async (memberIdx: number) => {
     if (editingTeamIndex === null || !teamDraft) return;
     const members = Array.isArray(teamDraft.members) ? teamDraft.members : [];
     const missing = validateMemberRequired(members[memberIdx]);
@@ -431,7 +466,7 @@ export default function TeamProfilesPage() {
         await reloadRegistered();
         alert('Saved');
         return;
-      } catch (e:any) {
+      } catch (e: any) {
         console.warn(e);
         alert(e?.message || 'Could not save to Supabase');
         return;
@@ -481,7 +516,7 @@ export default function TeamProfilesPage() {
                 return next;
               });
             }
-          } catch {}
+          } catch { }
         }
         await syncTeamMembers(String(teamDraft.teamId), members);
 
@@ -502,7 +537,7 @@ export default function TeamProfilesPage() {
         closeTeamEditor();
         alert('Saved');
         return;
-      } catch (e:any) {
+      } catch (e: any) {
         console.warn(e);
         alert(e?.message || 'Could not save to Supabase');
         return;
@@ -790,41 +825,41 @@ export default function TeamProfilesPage() {
     }
   };
 
-  const uniqueCampuses = Array.from(new Set(scopedRegistered.flatMap(t => (t.members||[]).map((m:any)=>m.campus)).filter(Boolean)));
-  const uniquePrograms = Array.from(new Set(scopedRegistered.flatMap(t => (t.members||[]).map((m:any)=>m.program)).filter(Boolean)));
-  const individualRows = scopedRegistered.flatMap((t:any)=>(t.members||[]).map((m:any,idx:number)=>(
+  const uniqueCampuses = Array.from(new Set(scopedRegistered.flatMap(t => (t.members || []).map((m: any) => m.campus)).filter(Boolean)));
+  const uniquePrograms = Array.from(new Set(scopedRegistered.flatMap(t => (t.members || []).map((m: any) => m.program)).filter(Boolean)));
+  const individualRows = scopedRegistered.flatMap((t: any) => (t.members || []).map((m: any, idx: number) => (
     (() => {
       const leadMember = getLeadMember(t);
       const leadIdentity = leadMember ? getMemberIdentity(leadMember, 0) : '';
       const currentIdentity = getMemberIdentity(m, idx);
       return {
-      ...m,
-      teamName:t.teamName,
-      domain:t.domain,
-      venue:getVenueForTeam(t),
-      spoc:getSpocForTeam(t.teamName),
-      teamSize:(t.members||[]).length,
-      memberIndex: idx,
-      memberKey: m.email || m.registrationNumber || idx,
-      position: leadIdentity && currentIdentity === leadIdentity ? 'Lead' : 'Member',
-    };
+        ...m,
+        teamName: t.teamName,
+        domain: t.domain,
+        venue: getVenueForTeam(t),
+        spoc: getSpocForTeam(t.teamName),
+        teamSize: (t.members || []).length,
+        memberIndex: idx,
+        memberKey: m.email || m.registrationNumber || idx,
+        position: leadIdentity && currentIdentity === leadIdentity ? 'Lead' : 'Member',
+      };
     })()
   )));
   const uniqueDomains = DOMAIN_OPTIONS;
   const uniqueTeamSizes = [3, 4];
-  const uniqueVenues = Array.from(new Set(scopedRegistered.map((t:any)=>getVenueForTeam(t)).filter(Boolean)));
-  const uniqueSpocs = Array.from(new Set(scopedRegistered.map((t:any)=>getSpocForTeam(t.teamName)).filter((s:string)=>s && s!=='-')));
+  const uniqueVenues = Array.from(new Set(scopedRegistered.map((t: any) => getVenueForTeam(t)).filter(Boolean)));
+  const uniqueSpocs = Array.from(new Set(scopedRegistered.map((t: any) => getSpocForTeam(t.teamName)).filter((s: string) => s && s !== '-')));
 
-  const filteredTeams = scopedRegistered.filter((t:any)=>{
+  const filteredTeams = scopedRegistered.filter((t: any) => {
     if (campusFilter !== 'All') {
-      const teamCampuses = Array.from(new Set((t.members||[]).map((m:any)=>m.campus)));
+      const teamCampuses = Array.from(new Set((t.members || []).map((m: any) => m.campus)));
       if (!teamCampuses.includes(campusFilter)) return false;
     }
     if (domainFilter !== 'All') {
       if (normalizeDomain(t.domain) !== domainFilter) return false;
     }
     if (teamSizeFilter !== 'All') {
-      if ((t.members||[]).length !== parseInt(teamSizeFilter)) return false;
+      if ((t.members || []).length !== parseInt(teamSizeFilter)) return false;
     }
     if (venueFilter !== 'All') {
       const teamVenue = getVenueForTeam(t);
@@ -840,20 +875,20 @@ export default function TeamProfilesPage() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const leadName = (getLeadMember(t)?.name || '').toLowerCase();
-      if (!(t.teamName||'').toLowerCase().includes(q) && !leadName.includes(q)) return false;
+      if (!(t.teamName || '').toLowerCase().includes(q) && !leadName.includes(q)) return false;
     }
     return true;
   });
 
-  const filteredIndividualsBase = individualRows.filter((m:any)=>{
-    if (campusFilter!=='All' && m.campus!==campusFilter) return false;
-    if (domainFilter!=='All' && normalizeDomain(m.domain)!==domainFilter) return false;
-    if (teamSizeFilter!=='All' && Number(m.teamSize || 0)!==parseInt(teamSizeFilter, 10)) return false;
-    if (yearFilter!=='All' && m.yearOfStudy!==yearFilter) return false;
-    if (positionFilter!=='All' && String(m.position || 'Member')!==positionFilter) return false;
-    if (stayFilter!=='All' && m.stay!==stayFilter) return false;
-    if (venueFilter!=='All' && (m.venue || '')!==venueFilter) return false;
-    if (spocFilter!=='All' && (m.spoc || '')!==spocFilter) return false;
+  const filteredIndividualsBase = individualRows.filter((m: any) => {
+    if (campusFilter !== 'All' && m.campus !== campusFilter) return false;
+    if (domainFilter !== 'All' && normalizeDomain(m.domain) !== domainFilter) return false;
+    if (teamSizeFilter !== 'All' && Number(m.teamSize || 0) !== parseInt(teamSizeFilter, 10)) return false;
+    if (yearFilter !== 'All' && m.yearOfStudy !== yearFilter) return false;
+    if (positionFilter !== 'All' && String(m.position || 'Member') !== positionFilter) return false;
+    if (stayFilter !== 'All' && m.stay !== stayFilter) return false;
+    if (venueFilter !== 'All' && (m.venue || '') !== venueFilter) return false;
+    if (spocFilter !== 'All' && (m.spoc || '') !== spocFilter) return false;
     if (attendanceFilter !== 'All') {
       const memberDisplay = getMemberAttendanceDisplay(m.teamName, m.memberKey);
       if (memberDisplay !== attendanceFilter) return false;
@@ -865,12 +900,12 @@ export default function TeamProfilesPage() {
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       if (
-        !(m.name||'').toLowerCase().includes(q) &&
-        !(m.email||'').toLowerCase().includes(q) &&
-        !(m.registrationNumber||'').toLowerCase().includes(q) &&
-        !(m.teamName||'').toLowerCase().includes(q) &&
-        !(m.phoneNumber||'').toLowerCase().includes(q) &&
-        !(m.branch||'').toLowerCase().includes(q)
+        !(m.name || '').toLowerCase().includes(q) &&
+        !(m.email || '').toLowerCase().includes(q) &&
+        !(m.registrationNumber || '').toLowerCase().includes(q) &&
+        !(m.teamName || '').toLowerCase().includes(q) &&
+        !(m.phoneNumber || '').toLowerCase().includes(q) &&
+        !(m.branch || '').toLowerCase().includes(q)
       ) return false;
     }
     return true;
@@ -879,12 +914,12 @@ export default function TeamProfilesPage() {
   const uniqueSchools = Array.from(
     new Set(
       filteredIndividualsBase
-        .map((m:any) => String(m.school || '').trim())
+        .map((m: any) => String(m.school || '').trim())
         .filter(Boolean)
     )
   );
 
-  const filteredIndividuals = filteredIndividualsBase.filter((m:any) => {
+  const filteredIndividuals = filteredIndividualsBase.filter((m: any) => {
     if (schoolFilter !== 'All' && String(m.school || '').trim() !== schoolFilter) return false;
     return true;
   });
@@ -1044,7 +1079,7 @@ export default function TeamProfilesPage() {
             setTeamLeadOverrides(map);
           }
         }
-      } catch {}
+      } catch { }
     } catch { }
   };
 
@@ -1097,8 +1132,8 @@ export default function TeamProfilesPage() {
       try {
         // Best-effort cleanup for uploads tied to this team
         await Promise.all([
-          deleteAllNocForTeam(teamName).catch(() => {}),
-          deleteAllPptForTeam(String(team.teamId)).catch(() => {}),
+          deleteAllNocForTeam(teamName).catch(() => { }),
+          deleteAllPptForTeam(String(team.teamId)).catch(() => { }),
         ]);
         await deleteTeamAndMembers(String(team.teamId));
         await reloadRegistered();
@@ -1191,6 +1226,7 @@ export default function TeamProfilesPage() {
 
   return (
     <main className="min-h-screen bg-antique p-6">
+      <SupabaseHealthBanner />
       <div className="max-w-7xl mx-auto">
         {/* Page Header with border/shadow */}
         <div className="bg-white rounded-lg shadow-md border-2 border-gitam-300 p-6 mb-6">
@@ -1208,14 +1244,14 @@ export default function TeamProfilesPage() {
         {/* Tab Navigation */}
         <div className="bg-white rounded-lg shadow-md border-2 border-gitam-300 p-4 mb-6">
           <div className="flex gap-2">
-            <button 
-              onClick={() => setSelectedTab('teams')} 
-              className={`px-6 py-2 rounded-lg font-semibold transition ${selectedTab==='teams' ? 'bg-gitam-700 text-antique shadow':'bg-gitam-50 text-gitam-700 hover:bg-gitam-100'}`}>
+            <button
+              onClick={() => setSelectedTab('teams')}
+              className={`px-6 py-2 rounded-lg font-semibold transition ${selectedTab === 'teams' ? 'bg-gitam-700 text-antique shadow' : 'bg-gitam-50 text-gitam-700 hover:bg-gitam-100'}`}>
               Teams
             </button>
-            <button 
-              onClick={() => setSelectedTab('individuals')} 
-              className={`px-6 py-2 rounded-lg font-semibold transition ${selectedTab==='individuals' ? 'bg-gitam-700 text-antique shadow':'bg-gitam-50 text-gitam-700 hover:bg-gitam-100'}`}>
+            <button
+              onClick={() => setSelectedTab('individuals')}
+              className={`px-6 py-2 rounded-lg font-semibold transition ${selectedTab === 'individuals' ? 'bg-gitam-700 text-antique shadow' : 'bg-gitam-50 text-gitam-700 hover:bg-gitam-100'}`}>
               Individuals
             </button>
           </div>
@@ -1228,42 +1264,42 @@ export default function TeamProfilesPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 mb-4">
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Campus</label>
-                  <select value={campusFilter} onChange={(e)=>setCampusFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={campusFilter} onChange={(e) => setCampusFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueCampuses.map((c:any)=>(<option key={c}>{c}</option>))}
+                    {uniqueCampuses.map((c: any) => (<option key={c}>{c}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Domain</label>
-                  <select value={domainFilter} onChange={(e)=>setDomainFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueDomains.map((d:any)=>(<option key={d}>{d}</option>))}
+                    {uniqueDomains.map((d: any) => (<option key={d}>{d}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Team Size</label>
-                  <select value={teamSizeFilter} onChange={(e)=>setTeamSizeFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={teamSizeFilter} onChange={(e) => setTeamSizeFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueTeamSizes.map((s:any)=>(<option key={s}>{s}</option>))}
+                    {uniqueTeamSizes.map((s: any) => (<option key={s}>{s}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Venue</label>
-                  <select value={venueFilter} onChange={(e)=>setVenueFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={venueFilter} onChange={(e) => setVenueFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueVenues.map((v:any)=>(<option key={v}>{v}</option>))}
+                    {uniqueVenues.map((v: any) => (<option key={v}>{v}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">SPOC</label>
-                  <select value={spocFilter} onChange={(e)=>setSpocFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={spocFilter} onChange={(e) => setSpocFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueSpocs.map((s:any)=>(<option key={s}>{s}</option>))}
+                    {uniqueSpocs.map((s: any) => (<option key={s}>{s}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Attendance</label>
-                  <select value={attendanceFilter} onChange={(e)=>setAttendanceFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={attendanceFilter} onChange={(e) => setAttendanceFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
                     <option>Present</option>
                     <option>Absent</option>
@@ -1271,7 +1307,7 @@ export default function TeamProfilesPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Search</label>
-                  <input value={searchQuery} onChange={(e)=>setSearchQuery(e.target.value)} placeholder="Team / Lead" className="hh-input w-full border-2 border-gitam-200 text-sm" />
+                  <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Team / Lead" className="hh-input w-full border-2 border-gitam-200 text-sm" />
                 </div>
               </div>
               <div className="flex justify-between items-center flex-wrap gap-3">
@@ -1281,7 +1317,7 @@ export default function TeamProfilesPage() {
                 </div>
                 <div className="flex gap-2">
                   <button onClick={bulkSaveAllAttendance} className="hh-btn px-3 py-2 border-2 text-sm font-semibold">💾 Bulk Save ({Object.keys(draftTeamAttendance).length})</button>
-                  <button onClick={()=>exportTeamsCsv(filteredTeams)} className="hh-btn-outline px-3 py-2 border-2 text-sm">Export CSV</button>
+                  <button onClick={() => exportTeamsCsv(filteredTeams)} className="hh-btn-outline px-3 py-2 border-2 text-sm">Export CSV</button>
                   {!isSpocView ? (
                     <button
                       onClick={resyncAllTeamLogins}
@@ -1313,12 +1349,12 @@ export default function TeamProfilesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredTeams.map((t:any,i:number)=> (
+                  {filteredTeams.map((t: any, i: number) => (
                     <tr key={i} className="border-b border-gitam-200 odd:bg-white even:bg-gitam-50/40 hover:bg-gitam-100 transition">
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{(t.members||[])[0]?.campus||'-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{(t.members || [])[0]?.campus || '-'}</td>
                       <td className="p-3 border-r border-gitam-100">
                         <span className="px-2 py-1 bg-gitam-100 text-gitam-700 rounded-full text-xs font-medium">
-                          {normalizeDomain(t.domain)||'No Domain'}
+                          {normalizeDomain(t.domain) || 'No Domain'}
                         </span>
                       </td>
                       <td className="p-3 border-r border-gitam-100">
@@ -1326,12 +1362,12 @@ export default function TeamProfilesPage() {
                       </td>
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{getLeadMember(t)?.name || '-'}</td>
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{getLeadMember(t)?.phoneNumber || '-'}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{(t.members||[]).length}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{getVenueForTeam(t)||'-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{(t.members || []).length}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{getVenueForTeam(t) || '-'}</td>
                       <td className="p-3 text-gitam-600 border-r border-gitam-100">{getSpocForTeam(t.teamName)}</td>
                       <td className="p-3 border-r border-gitam-100 w-[150px]">
                         <div className="flex gap-2 items-center whitespace-nowrap">
-                          <select 
+                          <select
                             value={draftTeamAttendance[t.teamName] !== undefined ? draftTeamAttendance[t.teamName] : (teamAttendance[t.teamName] || '')}
                             onChange={(e) => setDraftTeamAttendance((prev) => ({ ...prev, [t.teamName]: e.target.value }))}
                             className="hh-input !w-[112px] border-2 border-gitam-200 text-xs px-2 py-1 shrink-0"
@@ -1340,7 +1376,7 @@ export default function TeamProfilesPage() {
                             <option value="Present">Present</option>
                             <option value="Absent">Absent</option>
                           </select>
-                          <button 
+                          <button
                             onClick={() => saveTeamAttendance(t.teamName, draftTeamAttendance[t.teamName] !== undefined ? draftTeamAttendance[t.teamName] : (teamAttendance[t.teamName] || ''))}
                             className="hh-btn-outline px-2 py-1 text-xs border-2 whitespace-nowrap shrink-0"
                           >
@@ -1350,9 +1386,9 @@ export default function TeamProfilesPage() {
                       </td>
                       <td className="p-3 w-[170px]">
                         <div className="flex gap-1.5 whitespace-nowrap">
-                          <button onClick={()=>openTeamEditor(t)} className="hh-btn px-2.5 py-1.5 text-xs">✏️ Edit</button>
-                          <button onClick={()=>exportTeamsCsv([t])} className="hh-btn-outline px-2.5 py-1.5 text-xs">📄 Export</button>
-                          <button onClick={()=>deleteTeam(t)} className="hh-btn-outline px-2 py-1.5 text-xs text-red-600 hover:bg-red-50">🗑️</button>
+                          <button onClick={() => openTeamEditor(t)} className="hh-btn px-2.5 py-1.5 text-xs">✏️ Edit</button>
+                          <button onClick={() => exportTeamsCsv([t])} className="hh-btn-outline px-2.5 py-1.5 text-xs">📄 Export</button>
+                          <button onClick={() => deleteTeam(t)} className="hh-btn-outline px-2 py-1.5 text-xs text-red-600 hover:bg-red-50">🗑️</button>
                         </div>
                       </td>
                     </tr>
@@ -1360,7 +1396,7 @@ export default function TeamProfilesPage() {
                 </tbody>
               </table>
             </div>
-            
+
             {filteredTeams.length === 0 && (
               <div className="text-center py-16 text-gitam-600">
                 <p className="text-lg font-medium">No teams found matching your filters.</p>
@@ -1377,28 +1413,28 @@ export default function TeamProfilesPage() {
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-11 gap-3 mb-4">
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Campus</label>
-                  <select value={campusFilter} onChange={(e)=>setCampusFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={campusFilter} onChange={(e) => setCampusFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueCampuses.map((c:any)=>(<option key={c}>{c}</option>))}
+                    {uniqueCampuses.map((c: any) => (<option key={c}>{c}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Domain</label>
-                  <select value={domainFilter} onChange={(e)=>setDomainFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={domainFilter} onChange={(e) => setDomainFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueDomains.map((d:any)=>(<option key={d}>{d}</option>))}
+                    {uniqueDomains.map((d: any) => (<option key={d}>{d}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Team Size</label>
-                  <select value={teamSizeFilter} onChange={(e)=>setTeamSizeFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={teamSizeFilter} onChange={(e) => setTeamSizeFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueTeamSizes.map((s:any)=>(<option key={s}>{s}</option>))}
+                    {uniqueTeamSizes.map((s: any) => (<option key={s}>{s}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Year</label>
-                  <select value={yearFilter} onChange={(e)=>setYearFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={yearFilter} onChange={(e) => setYearFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
                     <option>1st Year</option>
                     <option>2nd Year</option>
@@ -1409,14 +1445,14 @@ export default function TeamProfilesPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">School</label>
-                  <select value={schoolFilter} onChange={(e)=>setSchoolFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={schoolFilter} onChange={(e) => setSchoolFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueSchools.map((s:any)=>(<option key={s}>{s}</option>))}
+                    {uniqueSchools.map((s: any) => (<option key={s}>{s}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Stay</label>
-                  <select value={stayFilter} onChange={(e)=>setStayFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={stayFilter} onChange={(e) => setStayFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
                     <option>Hostel</option>
                     <option>Day Scholar</option>
@@ -1424,21 +1460,21 @@ export default function TeamProfilesPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Venue</label>
-                  <select value={venueFilter} onChange={(e)=>setVenueFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={venueFilter} onChange={(e) => setVenueFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueVenues.map((v:any)=>(<option key={v}>{v}</option>))}
+                    {uniqueVenues.map((v: any) => (<option key={v}>{v}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">SPOC</label>
-                  <select value={spocFilter} onChange={(e)=>setSpocFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={spocFilter} onChange={(e) => setSpocFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueSpocs.map((s:any)=>(<option key={s}>{s}</option>))}
+                    {uniqueSpocs.map((s: any) => (<option key={s}>{s}</option>))}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Attendance</label>
-                  <select value={attendanceFilter} onChange={(e)=>setAttendanceFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={attendanceFilter} onChange={(e) => setAttendanceFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
                     <option>Present</option>
                     <option>Absent</option>
@@ -1446,7 +1482,7 @@ export default function TeamProfilesPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Daybreak</label>
-                  <select value={daybreakFilter} onChange={(e)=>setDaybreakFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={daybreakFilter} onChange={(e) => setDaybreakFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
                     <option>Opted</option>
                     <option>Not opted</option>
@@ -1454,7 +1490,7 @@ export default function TeamProfilesPage() {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Position</label>
-                  <select value={positionFilter} onChange={(e)=>setPositionFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
+                  <select value={positionFilter} onChange={(e) => setPositionFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
                     <option>Lead</option>
                     <option>Member</option>
@@ -1462,11 +1498,11 @@ export default function TeamProfilesPage() {
                 </div>
                 <div className="max-w-[190px]">
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Search</label>
-                  <input 
-                    value={searchQuery} 
-                    onChange={(e)=>setSearchQuery(e.target.value)} 
-                    placeholder="Name, Reg no, Phone, Email, Branch" 
-                    className="hh-input w-full border-2 border-gitam-200 text-sm" 
+                  <input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Name, Reg no, Phone, Email, Branch"
+                    className="hh-input w-full border-2 border-gitam-200 text-sm"
                   />
                 </div>
               </div>
@@ -1476,7 +1512,7 @@ export default function TeamProfilesPage() {
                 </div>
                 <div className="flex gap-2">
                   <button onClick={bulkSaveAllAttendance} className="hh-btn px-3 py-2 border-2 text-sm font-semibold">💾 Bulk Save ({Object.keys(draftMemberAttendance).length + Object.keys(draftMemberDaybreak).length})</button>
-                  <button onClick={()=>exportIndividualsCsv(filteredIndividuals)} className="hh-btn-outline px-3 py-2 border-2 text-sm">Export CSV</button>
+                  <button onClick={() => exportIndividualsCsv(filteredIndividuals)} className="hh-btn-outline px-3 py-2 border-2 text-sm">Export CSV</button>
                 </div>
               </div>
             </div>
@@ -1507,30 +1543,30 @@ export default function TeamProfilesPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredIndividuals.map((m:any,idx:number)=>(
+                  {filteredIndividuals.map((m: any, idx: number) => (
                     <tr key={idx} className="border-b border-gitam-200 odd:bg-white even:bg-gitam-50/40 hover:bg-gitam-100 transition">
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.campus||'-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.campus || '-'}</td>
                       <td className="p-3 border-r border-gitam-100">
                         <span className="px-2 py-1 bg-gitam-100 text-gitam-700 rounded-full text-xs font-medium">
-                          {normalizeDomain(m.domain)||'-'}
+                          {normalizeDomain(m.domain) || '-'}
                         </span>
                       </td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.teamName||'-'}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.teamSize||'-'}</td>
-                      <td className="p-3 font-medium text-gitam-700 border-r border-gitam-100">{m.name||'-'}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.position||'Member'}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.email||'-'}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.registrationNumber||'-'}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.phoneNumber||'-'}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.yearOfStudy||'-'}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.school||'-'}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.branch||'-'}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.stay||'-'}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.venue||'-'}</td>
-                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.spoc||'-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.teamName || '-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.teamSize || '-'}</td>
+                      <td className="p-3 font-medium text-gitam-700 border-r border-gitam-100">{m.name || '-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.position || 'Member'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.email || '-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.registrationNumber || '-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.phoneNumber || '-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.yearOfStudy || '-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.school || '-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.branch || '-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.stay || '-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.venue || '-'}</td>
+                      <td className="p-3 text-gitam-600 border-r border-gitam-100">{m.spoc || '-'}</td>
                       <td className="p-3 border-r border-gitam-100 w-[150px]">
                         <div className="flex gap-2 items-center whitespace-nowrap">
-                          <select 
+                          <select
                             value={draftMemberAttendance[`member_attendance_${m.teamName}_${m.memberKey}`] !== undefined ? draftMemberAttendance[`member_attendance_${m.teamName}_${m.memberKey}`] : (memberAttendance[`member_attendance_${m.teamName}_${m.memberKey}`] || getMemberAttendanceDisplay(m.teamName, m.memberKey) || '')}
                             onChange={(e) => setDraftMemberAttendance((prev) => ({ ...prev, [`member_attendance_${m.teamName}_${m.memberKey}`]: e.target.value }))}
                             className="hh-input !w-[112px] border-2 border-gitam-200 text-xs px-2 py-1 shrink-0"
@@ -1539,7 +1575,7 @@ export default function TeamProfilesPage() {
                             <option value="Present">Present</option>
                             <option value="Absent">Absent</option>
                           </select>
-                          <button 
+                          <button
                             onClick={() => saveMemberAttendance(
                               m.teamName,
                               m.memberKey,
@@ -1670,35 +1706,35 @@ export default function TeamProfilesPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 flex-1 min-h-0 overflow-hidden">
               <div className="md:col-span-1 min-h-0 flex flex-col overflow-hidden border border-gitam-100 rounded-xl bg-white">
                 <div className="space-y-3 flex-1 min-h-0 overflow-y-auto p-3 pr-2">
-                  {(teamDraft.members || []).map((m:any, idx:number) => (
+                  {(teamDraft.members || []).map((m: any, idx: number) => (
                     (() => {
                       const teamName = String(teamDraft.teamName || '').trim();
                       const isLead = idx === 0;
                       return (
-                    <div
-                      key={idx}
-                      className={`p-3 border rounded cursor-pointer ${selectedMemberIndex === idx ? 'ring-2 ring-gitam-300' : ''}`}
-                      onClick={() => setSelectedMemberIndex(idx)}
-                    >
-                      <div className="font-semibold flex items-center gap-2">
-                        Member {idx + 1}: {m?.name || '-'}
-                        {isLead && <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gitam-700 text-antique">Lead</span>}
-                      </div>
-                      <div className="text-sm text-gitam-700/75">Reg: {m?.registrationNumber || '-'}</div>
-                      <div className="text-sm text-gitam-700/75">Email: {m?.email || '-'}</div>
-                      {!isLead && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setTeamLead(teamName, teamDraft.members || [], idx);
-                          }}
-                          className="mt-2 hh-btn-outline px-2 py-1 text-xs"
+                        <div
+                          key={idx}
+                          className={`p-3 border rounded cursor-pointer ${selectedMemberIndex === idx ? 'ring-2 ring-gitam-300' : ''}`}
+                          onClick={() => setSelectedMemberIndex(idx)}
                         >
-                          Make Lead
-                        </button>
-                      )}
-                    </div>
+                          <div className="font-semibold flex items-center gap-2">
+                            Member {idx + 1}: {m?.name || '-'}
+                            {isLead && <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-gitam-700 text-antique">Lead</span>}
+                          </div>
+                          <div className="text-sm text-gitam-700/75">Reg: {m?.registrationNumber || '-'}</div>
+                          <div className="text-sm text-gitam-700/75">Email: {m?.email || '-'}</div>
+                          {!isLead && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setTeamLead(teamName, teamDraft.members || [], idx);
+                              }}
+                              className="mt-2 hh-btn-outline px-2 py-1 text-xs"
+                            >
+                              Make Lead
+                            </button>
+                          )}
+                        </div>
                       );
                     })()
                   ))}
@@ -1711,11 +1747,10 @@ export default function TeamProfilesPage() {
                   <button
                     onClick={addMemberToTeam}
                     disabled={(teamDraft.members || []).length >= 4}
-                    className={`w-full p-3 border-2 border-dashed rounded-lg font-semibold transition ${
-                      (teamDraft.members || []).length >= 4
+                    className={`w-full p-3 border-2 border-dashed rounded-lg font-semibold transition ${(teamDraft.members || []).length >= 4
                         ? 'border-gray-300 text-gray-400 cursor-not-allowed'
                         : 'border-gitam-400 text-gitam-700 hover:bg-gitam-50 hover:border-gitam-600'
-                    }`}
+                      }`}
                     title={(teamDraft.members || []).length >= 4 ? 'Maximum 4 members allowed' : 'Add a new member to this team'}
                   >
                     + Add Member {(teamDraft.members || []).length >= 4 && '(Max 4)'}
@@ -1732,14 +1767,13 @@ export default function TeamProfilesPage() {
                         <div className="text-sm text-gitam-700/75">Update fields and click Save.</div>
                       </div>
                       <div className="flex gap-2">
-                        <button 
+                        <button
                           onClick={deleteMemberFromTeam}
                           disabled={(teamDraft.members || []).length <= 3}
-                          className={`px-3 py-1 rounded-lg font-semibold transition ${
-                            (teamDraft.members || []).length <= 3
+                          className={`px-3 py-1 rounded-lg font-semibold transition ${(teamDraft.members || []).length <= 3
                               ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
                               : 'bg-red-600 text-white hover:bg-red-700'
-                          }`}
+                            }`}
                           title={(teamDraft.members || []).length <= 3 ? 'Minimum 3 members required' : 'Delete this member'}
                         >
                           Delete
@@ -1752,164 +1786,164 @@ export default function TeamProfilesPage() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                           <label className="text-sm text-gitam-700">Campus</label>
-                        <select
-                          value={teamDraft.members[selectedMemberIndex]?.campus || ''}
-                          onChange={(e)=>{
-                            const copy = { ...teamDraft, members: [...teamDraft.members] };
-                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], campus: e.target.value };
-                            setTeamDraft(copy);
-                          }}
-                          className="hh-input"
-                        >
-                          <option value="">Select Campus</option>
-                          {registrationCampusOptions.map((c)=> (<option key={c} value={c}>{c}</option>))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-sm text-gitam-700">Full Name</label>
-                        <input
-                          value={teamDraft.members[selectedMemberIndex]?.name || ''}
-                          onChange={(e)=>{
-                            const copy = { ...teamDraft, members: [...teamDraft.members] };
-                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], name: e.target.value };
-                            setTeamDraft(copy);
-                          }}
-                          placeholder="Full name"
-                          className="hh-input"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm text-gitam-700">Registration Number</label>
-                        <input
-                          value={teamDraft.members[selectedMemberIndex]?.registrationNumber || ''}
-                          onChange={(e)=>{
-                            const copy = { ...teamDraft, members: [...teamDraft.members] };
-                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], registrationNumber: e.target.value };
-                            setTeamDraft(copy);
-                          }}
-                          placeholder="Registration number"
-                          className="hh-input"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm text-gitam-700">GITAM Mail</label>
-                        <input
-                          type="email"
-                          value={teamDraft.members[selectedMemberIndex]?.email || ''}
-                          onChange={(e)=>{
-                            const copy = { ...teamDraft, members: [...teamDraft.members] };
-                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], email: e.target.value };
-                            setTeamDraft(copy);
-                          }}
-                          placeholder="email@gitam.in"
-                          className="hh-input"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm text-gitam-700">Phone Number</label>
-                        <input
-                          type="tel"
-                          value={teamDraft.members[selectedMemberIndex]?.phoneNumber || ''}
-                          onChange={(e)=>{
-                            const copy = { ...teamDraft, members: [...teamDraft.members] };
-                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], phoneNumber: e.target.value };
-                            setTeamDraft(copy);
-                          }}
-                          inputMode="numeric"
-                          maxLength={10}
-                          placeholder="10-digit phone number"
-                          className="hh-input"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm text-gitam-700">School</label>
-                        <select
-                          value={teamDraft.members[selectedMemberIndex]?.school || ''}
-                          onChange={(e)=>{
-                            const copy = { ...teamDraft, members: [...teamDraft.members] };
-                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], school: e.target.value };
-                            setTeamDraft(copy);
-                          }}
-                          className="hh-input"
-                        >
-                          <option value="">Select School</option>
-                          {registrationSchoolOptions.map((s)=> (<option key={s} value={s}>{s}</option>))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-sm text-gitam-700">Program</label>
-                        <select
-                          value={teamDraft.members[selectedMemberIndex]?.program || ''}
-                          onChange={(e)=>{
-                            const copy = { ...teamDraft, members: [...teamDraft.members] };
-                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], program: e.target.value };
-                            setTeamDraft(copy);
-                          }}
-                          className="hh-input"
-                        >
-                          <option value="">Select Program</option>
-                          {registrationProgramOptions.map((p)=> (<option key={p} value={p}>{p}</option>))}
-                        </select>
-                      </div>
-                      {teamDraft.members[selectedMemberIndex]?.program === 'Others' && (
-                        <div>
-                          <label className="text-sm text-gitam-700">Specify Your Program</label>
-                          <input
-                            value={teamDraft.members[selectedMemberIndex]?.programOther || ''}
-                            onChange={(e)=>{
+                          <select
+                            value={teamDraft.members[selectedMemberIndex]?.campus || ''}
+                            onChange={(e) => {
                               const copy = { ...teamDraft, members: [...teamDraft.members] };
-                              copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], programOther: e.target.value };
+                              copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], campus: e.target.value };
                               setTeamDraft(copy);
                             }}
-                            placeholder="Enter your program"
+                            className="hh-input"
+                          >
+                            <option value="">Select Campus</option>
+                            {registrationCampusOptions.map((c) => (<option key={c} value={c}>{c}</option>))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-sm text-gitam-700">Full Name</label>
+                          <input
+                            value={teamDraft.members[selectedMemberIndex]?.name || ''}
+                            onChange={(e) => {
+                              const copy = { ...teamDraft, members: [...teamDraft.members] };
+                              copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], name: e.target.value };
+                              setTeamDraft(copy);
+                            }}
+                            placeholder="Full name"
                             className="hh-input"
                           />
                         </div>
-                      )}
-                      <div>
-                        <label className="text-sm text-gitam-700">Branch</label>
-                        <input
-                          value={teamDraft.members[selectedMemberIndex]?.branch || ''}
-                          onChange={(e)=>{
-                            const copy = { ...teamDraft, members: [...teamDraft.members] };
-                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], branch: e.target.value };
-                            setTeamDraft(copy);
-                          }}
-                          placeholder="Branch (e.g., CSE, ECE)"
-                          className="hh-input"
-                        />
-                      </div>
-                      <div>
-                        <label className="text-sm text-gitam-700">Year of Study</label>
-                        <select
-                          value={String(teamDraft.members[selectedMemberIndex]?.yearOfStudy || '')}
-                          onChange={(e)=>{
-                            const copy = { ...teamDraft, members: [...teamDraft.members] };
-                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], yearOfStudy: e.target.value };
-                            setTeamDraft(copy);
-                          }}
-                          className="hh-input"
-                        >
-                          <option value="">Select Year</option>
-                          {registrationYearOptions.map((y)=> (<option key={y} value={y}>{y}</option>))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className="text-sm text-gitam-700">Stay Type</label>
-                        <select
-                          value={teamDraft.members[selectedMemberIndex]?.stay || ''}
-                          onChange={(e)=>{
-                            const copy = { ...teamDraft, members: [...teamDraft.members] };
-                            copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], stay: e.target.value };
-                            setTeamDraft(copy);
-                          }}
-                          className="hh-input"
-                        >
-                          <option value="">Select Stay Type</option>
-                          <option value="Hostel">Hostel</option>
-                          <option value="Day Scholar">Day Scholar</option>
-                        </select>
-                      </div>
+                        <div>
+                          <label className="text-sm text-gitam-700">Registration Number</label>
+                          <input
+                            value={teamDraft.members[selectedMemberIndex]?.registrationNumber || ''}
+                            onChange={(e) => {
+                              const copy = { ...teamDraft, members: [...teamDraft.members] };
+                              copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], registrationNumber: e.target.value };
+                              setTeamDraft(copy);
+                            }}
+                            placeholder="Registration number"
+                            className="hh-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm text-gitam-700">GITAM Mail</label>
+                          <input
+                            type="email"
+                            value={teamDraft.members[selectedMemberIndex]?.email || ''}
+                            onChange={(e) => {
+                              const copy = { ...teamDraft, members: [...teamDraft.members] };
+                              copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], email: e.target.value };
+                              setTeamDraft(copy);
+                            }}
+                            placeholder="email@gitam.in"
+                            className="hh-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm text-gitam-700">Phone Number</label>
+                          <input
+                            type="tel"
+                            value={teamDraft.members[selectedMemberIndex]?.phoneNumber || ''}
+                            onChange={(e) => {
+                              const copy = { ...teamDraft, members: [...teamDraft.members] };
+                              copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], phoneNumber: e.target.value };
+                              setTeamDraft(copy);
+                            }}
+                            inputMode="numeric"
+                            maxLength={10}
+                            placeholder="10-digit phone number"
+                            className="hh-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm text-gitam-700">School</label>
+                          <select
+                            value={teamDraft.members[selectedMemberIndex]?.school || ''}
+                            onChange={(e) => {
+                              const copy = { ...teamDraft, members: [...teamDraft.members] };
+                              copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], school: e.target.value };
+                              setTeamDraft(copy);
+                            }}
+                            className="hh-input"
+                          >
+                            <option value="">Select School</option>
+                            {registrationSchoolOptions.map((s) => (<option key={s} value={s}>{s}</option>))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-sm text-gitam-700">Program</label>
+                          <select
+                            value={teamDraft.members[selectedMemberIndex]?.program || ''}
+                            onChange={(e) => {
+                              const copy = { ...teamDraft, members: [...teamDraft.members] };
+                              copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], program: e.target.value };
+                              setTeamDraft(copy);
+                            }}
+                            className="hh-input"
+                          >
+                            <option value="">Select Program</option>
+                            {registrationProgramOptions.map((p) => (<option key={p} value={p}>{p}</option>))}
+                          </select>
+                        </div>
+                        {teamDraft.members[selectedMemberIndex]?.program === 'Others' && (
+                          <div>
+                            <label className="text-sm text-gitam-700">Specify Your Program</label>
+                            <input
+                              value={teamDraft.members[selectedMemberIndex]?.programOther || ''}
+                              onChange={(e) => {
+                                const copy = { ...teamDraft, members: [...teamDraft.members] };
+                                copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], programOther: e.target.value };
+                                setTeamDraft(copy);
+                              }}
+                              placeholder="Enter your program"
+                              className="hh-input"
+                            />
+                          </div>
+                        )}
+                        <div>
+                          <label className="text-sm text-gitam-700">Branch</label>
+                          <input
+                            value={teamDraft.members[selectedMemberIndex]?.branch || ''}
+                            onChange={(e) => {
+                              const copy = { ...teamDraft, members: [...teamDraft.members] };
+                              copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], branch: e.target.value };
+                              setTeamDraft(copy);
+                            }}
+                            placeholder="Branch (e.g., CSE, ECE)"
+                            className="hh-input"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-sm text-gitam-700">Year of Study</label>
+                          <select
+                            value={String(teamDraft.members[selectedMemberIndex]?.yearOfStudy || '')}
+                            onChange={(e) => {
+                              const copy = { ...teamDraft, members: [...teamDraft.members] };
+                              copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], yearOfStudy: e.target.value };
+                              setTeamDraft(copy);
+                            }}
+                            className="hh-input"
+                          >
+                            <option value="">Select Year</option>
+                            {registrationYearOptions.map((y) => (<option key={y} value={y}>{y}</option>))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-sm text-gitam-700">Stay Type</label>
+                          <select
+                            value={teamDraft.members[selectedMemberIndex]?.stay || ''}
+                            onChange={(e) => {
+                              const copy = { ...teamDraft, members: [...teamDraft.members] };
+                              copy.members[selectedMemberIndex] = { ...copy.members[selectedMemberIndex], stay: e.target.value };
+                              setTeamDraft(copy);
+                            }}
+                            className="hh-input"
+                          >
+                            <option value="">Select Stay Type</option>
+                            <option value="Hostel">Hostel</option>
+                            <option value="Day Scholar">Day Scholar</option>
+                          </select>
+                        </div>
                       </div>
                     </div>
                   </div>

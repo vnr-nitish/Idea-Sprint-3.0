@@ -17,13 +17,16 @@ export default function AdminLoginPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setErr(null);
     if (user === ADMIN_USER && pass === ADMIN_PASS) {
       if (isSupabaseConfigured()) {
-        try {
-          const supabase = getSupabaseClient();
-          await supabase?.auth.signInWithPassword({ email: ADMIN_USER, password: ADMIN_PASS });
-        } catch (e) {
-          // ignore; app can still use local flag for navigation
+        const supabase = getSupabaseClient();
+        if (supabase) {
+          // Best-effort Supabase sign-in — failure is non-blocking since credentials already matched
+          const { error } = await supabase.auth.signInWithPassword({ email: ADMIN_USER, password: ADMIN_PASS });
+          if (error) {
+            console.warn('Supabase admin sign-in skipped (Auth user not configured):', error.message);
+          }
         }
       }
       try {
