@@ -15,6 +15,7 @@ import {
   upsertTeamProblemSelection,
 } from '@/lib/problemBackend';
 
+interface ProblemStatement {
   id: string;
   domain: string;
   code: string;
