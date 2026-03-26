@@ -677,7 +677,10 @@ export default function TeamProfilesPage() {
     for (const [teamName, value] of Object.entries(draftTeamAttendance)) {
       if (value) {
         await saveTeamAttendance(teamName, value);
-        records.push({ teamName, date: today, status: value });
+        // Only allow 'Present' or 'Absent'
+        const allowed: Array<'Present' | 'Absent'> = ['Present', 'Absent'];
+        const status = allowed.includes(value as any) ? (value as 'Present' | 'Absent') : 'Absent';
+        records.push({ teamName, memberId: null, date: today, status });
         count++;
       }
     }
@@ -688,7 +691,10 @@ export default function TeamProfilesPage() {
         const teamName = parts[2];
         const memberKey = parts.slice(3).join('_');
         await saveMemberAttendance(teamName, memberKey, value);
-        records.push({ teamName, memberId: memberKey, date: today, status: value });
+        // Only allow 'Present' or 'Absent'
+        const allowed: Array<'Present' | 'Absent'> = ['Present', 'Absent'];
+        const status = allowed.includes(value as any) ? (value as 'Present' | 'Absent') : 'Absent';
+        records.push({ teamName, memberId: memberKey, date: today, status });
         count++;
       }
     }
