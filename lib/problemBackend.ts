@@ -7,6 +7,7 @@ export type ProblemStatementRecord = {
   description: string;
   outcome: string;
   createdAt: string;
+  isHidden?: boolean;
 };
 
 export const listProblemStatements = async (): Promise<ProblemStatementRecord[] | null> => {
@@ -16,7 +17,7 @@ export const listProblemStatements = async (): Promise<ProblemStatementRecord[] 
 
   const { data, error } = await supabase
     .from('problem_statements')
-    .select('id, domain, code, description, outcome, created_at')
+    .select('id, domain, code, description, outcome, created_at, is_hidden')
     .order('created_at', { ascending: false });
 
   if (error || !Array.isArray(data)) return null;
@@ -27,6 +28,7 @@ export const listProblemStatements = async (): Promise<ProblemStatementRecord[] 
     description: String(p.description || ''),
     outcome: String(p.outcome || ''),
     createdAt: String(p.created_at || new Date().toISOString()),
+    isHidden: !!p.is_hidden,
   }));
 };
 
@@ -35,6 +37,7 @@ export const upsertProblemStatements = async (rows: ProblemStatementRecord[]): P
   const supabase = getSupabaseClient();
   if (!supabase) return false;
 
+
   const payload = (rows || []).map((p) => ({
     id: p.id,
     domain: p.domain,
@@ -42,6 +45,7 @@ export const upsertProblemStatements = async (rows: ProblemStatementRecord[]): P
     description: p.description,
     outcome: p.outcome,
     created_at: p.createdAt || new Date().toISOString(),
+    is_hidden: !!p.isHidden,
   }));
 
   if (!payload.length) return true;

@@ -1,8 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
-const RichTextEditor = dynamic(() => import('@mantine/rte').then(mod => mod.RichTextEditor), { ssr: false });
+
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -1219,19 +1218,23 @@ export default function AdminProblemStatementsPage() {
 
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-gitam-700">Description</label>
-                  <RichTextEditor
+                  <textarea
                     value={description}
-                    onChange={setDescription}
-                    style={{ background: 'white' }}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Enter problem statement description"
+                    rows={4}
+                    className="hh-input w-full border-2 border-gitam-200"
                   />
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-gitam-700">Expected Outcome</label>
-                  <RichTextEditor
+                  <textarea
                     value={outcome}
-                    onChange={setOutcome}
-                    style={{ background: 'white' }}
+                    onChange={(e) => setOutcome(e.target.value)}
+                    placeholder="Enter expected outcome description"
+                    rows={3}
+                    className="hh-input w-full border-2 border-gitam-200"
                   />
                 </div>
               </div>
