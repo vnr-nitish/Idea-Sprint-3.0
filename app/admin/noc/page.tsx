@@ -790,7 +790,7 @@ export default function AdminNOCPage(){
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Venue</label>
-                  <select value={zoneFilter} onChange={(e)=>setZoneFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200"><option>All</option>{uniqueZones.map((z:any)=>(<option key={z}>{z}</option>))}</select>
+                  <select value={zoneFilter} onChange={(e)=>setZoneFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200"><option>All</option>{ICT_VENUES.map((z:any)=>(<option key={z}>{z}</option>))}</select>
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">SPOC</label>
