@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import dynamic from 'next/dynamic';
+import { RichTextEditor } from '@mantine/rte';
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -42,8 +42,7 @@ export default function AdminProblemStatementsPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [outcome, setOutcome] = useState('');
-    // Dynamically import react-quill to avoid SSR issues
-    const ReactQuill = useMemo(() => dynamic(() => import('react-quill'), { ssr: false }), []);
+
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
@@ -1218,42 +1217,20 @@ export default function AdminProblemStatementsPage() {
 
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-gitam-700">Description</label>
-                  {ReactQuill ? (
-                    <ReactQuill
-                      value={description}
-                      onChange={setDescription}
-                      theme="snow"
-                      style={{ background: 'white' }}
-                    />
-                  ) : (
-                    <textarea
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Enter problem statement description"
-                      rows={4}
-                      className="hh-input w-full border-2 border-gitam-200"
-                    />
-                  )}
+                  <RichTextEditor
+                    value={description}
+                    onChange={setDescription}
+                    style={{ background: 'white' }}
+                  />
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-semibold text-gitam-700">Expected Outcome</label>
-                  {ReactQuill ? (
-                    <ReactQuill
-                      value={outcome}
-                      onChange={setOutcome}
-                      theme="snow"
-                      style={{ background: 'white' }}
-                    />
-                  ) : (
-                    <textarea
-                      value={outcome}
-                      onChange={(e) => setOutcome(e.target.value)}
-                      placeholder="Enter expected outcome description"
-                      rows={3}
-                      className="hh-input w-full border-2 border-gitam-200"
-                    />
-                  )}
+                  <RichTextEditor
+                    value={outcome}
+                    onChange={setOutcome}
+                    style={{ background: 'white' }}
+                  />
                 </div>
               </div>
 
