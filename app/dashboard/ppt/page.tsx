@@ -475,6 +475,17 @@ export default function PPTPage() {
               <li>Only team lead can upload/delete PPT. Members can only view.</li>
               <li>Only PDF format is accepted for PPT submissions.</li>
               <li>Max file size: {MAX_PPT_MB} MB.</li>
+              <li>
+                PPT must follow the provided template.{' '}
+                <a
+                  href="https://docs.google.com/presentation/d/13Pc6TuIQO5G4ng2VBN5cQIZyP_P-J66iF8YBnKzQEa8/edit?usp=sharing"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline text-blue-700 hover:text-blue-900"
+                >
+                  Click here to access the PPT template
+                </a>.
+              </li>
           </ul>
         </div>
 
