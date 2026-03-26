@@ -717,7 +717,7 @@ export default function AdminFoodCouponsPage(){
               </div>
               <div>
                 <label className="block text-sm font-medium text-gitam-700 mb-1">Venue</label>
-                <select value={venueFilter} onChange={(e)=>setVenueFilter(e.target.value)} className="w-full px-3 py-2 border-2 border-gitam-200 rounded-lg focus:border-gitam-600 focus:ring-2 focus:ring-gitam/25 transition"><option>All</option>{uniqueVenues.map((v:any)=>(<option key={v}>{v}</option>))}</select>
+                <select value={venueFilter} onChange={(e)=>setVenueFilter(e.target.value)} className="w-full px-3 py-2 border-2 border-gitam-200 rounded-lg focus:border-gitam-600 focus:ring-2 focus:ring-gitam/25 transition"><option>All</option>{ICT_VENUES.map((v:any)=>(<option key={v}>{v}</option>))}</select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gitam-700 mb-1">SPOC</label>
