@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
@@ -14,10 +15,10 @@ import {
   upsertTeamProblemSelection,
 } from '@/lib/problemBackend';
 
-interface ProblemStatement {
   id: string;
   domain: string;
   code: string;
+  title: string;
   description: string;
   outcome: string;
   createdAt: string;
@@ -38,8 +39,12 @@ export default function AdminProblemStatementsPage() {
   // Problem Statement form state
   const [domain, setDomain] = useState('');
   const [code, setCode] = useState('');
+  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [outcome, setOutcome] = useState('');
+    // Dynamically import react-quill to avoid SSR issues
+    const ReactQuill = useMemo(() => dynamic(() => import('react-quill'), { ssr: false }), []);
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [statementDomainFilter, setStatementDomainFilter] = useState('All');
@@ -334,7 +339,7 @@ export default function AdminProblemStatementsPage() {
 
   // Save or edit problem statement
   const saveProblemStatement = () => {
-    if (!domain || !code || !description || !outcome) {
+    if (!domain || !code || !title || !description || !outcome) {
       alert('All fields are required');
       return;
     }
@@ -343,13 +348,14 @@ export default function AdminProblemStatementsPage() {
       // Edit mode
       const next = problems.map((p) =>
         p.id === editingId
-          ? { ...p, domain, code, description, outcome }
+          ? { ...p, domain, code, title, description, outcome }
           : p
       );
       saveProblems(next);
       setEditingId(null);
       setDomain('');
       setCode('');
+      setTitle('');
       setDescription('');
       setOutcome('');
       setShowModal(false);
@@ -360,6 +366,7 @@ export default function AdminProblemStatementsPage() {
         id: `ps_${Date.now()}_${Math.random().toString(36).slice(2)}`,
         domain,
         code,
+        title,
         description,
         outcome,
         createdAt: new Date().toISOString(),
@@ -368,6 +375,7 @@ export default function AdminProblemStatementsPage() {
       saveProblems([newPs, ...problems]);
       setDomain('');
       setCode('');
+      setTitle('');
       setDescription('');
       setOutcome('');
       setShowModal(false);
@@ -380,6 +388,7 @@ export default function AdminProblemStatementsPage() {
     setEditingId(ps.id);
     setDomain(ps.domain);
     setCode(ps.code);
+    setTitle(ps.title || '');
     setDescription(ps.description);
     setOutcome(ps.outcome);
     setShowModal(true);
@@ -400,6 +409,7 @@ export default function AdminProblemStatementsPage() {
     setEditingId(null);
     setDomain('');
     setCode('');
+    setTitle('');
     setDescription('');
     setOutcome('');
     setShowModal(false);
@@ -442,11 +452,20 @@ export default function AdminProblemStatementsPage() {
   // Only non-hidden problems for user-facing (legion) views
   const visibleProblems = useMemo(() => problems.filter((p) => !p.isHidden), [problems]);
 
+  // Prevent hide/unhide flicker by updating local state immediately and syncing with Supabase in the background
   const toggleProblemVisibility = (id: string) => {
-    const next = problems.map((p) =>
-      p.id === id ? { ...p, isHidden: !p.isHidden } : p
-    );
-    saveProblems(next);
+    setProblems((prev) => {
+      const next = prev.map((p) =>
+        p.id === id ? { ...p, isHidden: !p.isHidden } : p
+      );
+      try {
+        localStorage.setItem('problemStatements', JSON.stringify(next));
+      } catch {}
+      if (isSupabaseConfigured()) {
+        void upsertProblemStatements(next as any);
+      }
+      return next;
+    });
   };
 
   useEffect(() => {
@@ -772,17 +791,18 @@ export default function AdminProblemStatementsPage() {
                   filteredProblems.map((ps) => (
                     <div key={ps.id} className={`border-2 border-gitam-200 rounded-lg p-4 hover:border-gitam-300 ${ps.isHidden ? 'opacity-60' : ''}`}>
                       <div className="flex justify-between items-start gap-4 mb-2">
-                        <div className="flex-1">
-                          <div className="flex gap-2 items-center mb-2">
-                            <span className="font-semibold text-gitam-700">{ps.code}</span>
-                            <span className="text-xs bg-gitam-100 text-gitam-700 px-2 py-1 rounded">{ps.domain}</span>
-                            {ps.isHidden && <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Hidden</span>}
+                          <div className="flex-1">
+                            <div className="flex gap-2 items-center mb-2">
+                              <span className="font-semibold text-gitam-700">{ps.code}</span>
+                              <span className="text-xs bg-gitam-100 text-gitam-700 px-2 py-1 rounded">{ps.domain}</span>
+                              {ps.isHidden && <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">Hidden</span>}
+                            </div>
+                            <div className="font-bold text-lg text-gitam-700 mb-1">{ps.title}</div>
+                            <div className="text-sm text-gitam-700" dangerouslySetInnerHTML={{ __html: ps.description }} />
+                            <div className="text-xs text-gitam-700/75 mt-2">
+                              <strong>Outcome:</strong> <span dangerouslySetInnerHTML={{ __html: ps.outcome }} />
+                            </div>
                           </div>
-                          <p className="text-sm text-gitam-700">{ps.description}</p>
-                          <p className="text-xs text-gitam-700/75 mt-2">
-                            <strong>Outcome:</strong> {ps.outcome}
-                          </p>
-                        </div>
 
                         <div className="flex gap-2">
                           <button
@@ -1186,25 +1206,54 @@ export default function AdminProblemStatementsPage() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-semibold text-gitam-700">Description</label>
-                  <textarea
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Enter problem statement description"
-                    rows={4}
+                  <label className="mb-2 block text-sm font-semibold text-gitam-700">Title</label>
+                  <input
+                    type="text"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="Enter problem statement title"
                     className="hh-input w-full border-2 border-gitam-200"
                   />
                 </div>
 
                 <div>
+                  <label className="mb-2 block text-sm font-semibold text-gitam-700">Description</label>
+                  {ReactQuill ? (
+                    <ReactQuill
+                      value={description}
+                      onChange={setDescription}
+                      theme="snow"
+                      style={{ background: 'white' }}
+                    />
+                  ) : (
+                    <textarea
+                      value={description}
+                      onChange={(e) => setDescription(e.target.value)}
+                      placeholder="Enter problem statement description"
+                      rows={4}
+                      className="hh-input w-full border-2 border-gitam-200"
+                    />
+                  )}
+                </div>
+
+                <div>
                   <label className="mb-2 block text-sm font-semibold text-gitam-700">Expected Outcome</label>
-                  <textarea
-                    value={outcome}
-                    onChange={(e) => setOutcome(e.target.value)}
-                    placeholder="Enter expected outcome description"
-                    rows={3}
-                    className="hh-input w-full border-2 border-gitam-200"
-                  />
+                  {ReactQuill ? (
+                    <ReactQuill
+                      value={outcome}
+                      onChange={setOutcome}
+                      theme="snow"
+                      style={{ background: 'white' }}
+                    />
+                  ) : (
+                    <textarea
+                      value={outcome}
+                      onChange={(e) => setOutcome(e.target.value)}
+                      placeholder="Enter expected outcome description"
+                      rows={3}
+                      className="hh-input w-full border-2 border-gitam-200"
+                    />
+                  )}
                 </div>
               </div>
 
