@@ -338,9 +338,16 @@ export default function AdminNOCPage(){
   const uniqueCampuses = useMemo(()=> Array.from(new Set(scopedRegistered.flatMap(t => (t.members||[]).map((m:any)=>m.campus)).filter(Boolean))), [scopedRegistered]);
   const uniqueDomains = DOMAIN_OPTIONS;
   const uniqueTeamSizes = ['3', '4'];
-  const uniqueZones = useMemo(() => {
-    return Array.from(new Set(Object.values(assignments).map((a:any) => a?.venue).filter(Boolean)));
-  }, [assignments]);
+  const ICT_VENUES = [
+    'ICT 105',
+    'ICT 106',
+    'ICT 107',
+    'ICT 111',
+    'ICT 112',
+    'ICT 113',
+    'ICT 118',
+    'ICT 119',
+  ];
   const uniqueSpocs = useMemo(() => {
     return Array.from(new Set(Object.values(assignments).map((a:any) => a?.spoc?.name).filter(Boolean)));
   }, [assignments]);
@@ -1168,7 +1175,7 @@ export default function AdminNOCPage(){
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Venue</label>
-                <select value={zoneFilter} onChange={(e)=>setZoneFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200"><option>All</option>{uniqueZones.map((z:any)=>(<option key={z}>{z}</option>))}</select>
+                <select value={zoneFilter} onChange={(e)=>setZoneFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200"><option>All</option>{ICT_VENUES.map((z:any)=>(<option key={z}>{z}</option>))}</select>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-gitam-700 mb-1.5">SPOC</label>

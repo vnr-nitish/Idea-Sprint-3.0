@@ -416,7 +416,16 @@ export default function AdminProblemStatementsPage() {
   // Get unique values for filters
   const uniqueCampuses = useMemo(() => Array.from(new Set(scopedRegistered.map((r) => r.members?.[0]?.campus).filter(Boolean))), [scopedRegistered]);
   const uniqueDomains = DOMAIN_OPTIONS;
-  const uniqueZones = useMemo(() => Array.from(new Set(Object.values(assignments).map((a: any) => a?.venue).filter(Boolean))), [assignments]);
+  const ICT_VENUES = [
+    'ICT 105',
+    'ICT 106',
+    'ICT 107',
+    'ICT 111',
+    'ICT 112',
+    'ICT 113',
+    'ICT 118',
+    'ICT 119',
+  ];
   const uniqueSpocs = useMemo(() => Array.from(new Set(Object.values(assignments).map((a: any) => a?.spoc?.name).filter(Boolean))), [assignments]);
   const selectedTeamsCount = useMemo(() => Object.values(selectedTeams).filter(Boolean).length, [selectedTeams]);
 
@@ -879,7 +888,7 @@ export default function AdminProblemStatementsPage() {
                     className="hh-input w-full border-2 border-gitam-200"
                   >
                     <option>All</option>
-                    {uniqueZones.map((z: any) => (
+                    {ICT_VENUES.map((z: any) => (
                       <option key={z}>{z}</option>
                     ))}
                   </select>
