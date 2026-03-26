@@ -5,7 +5,9 @@ import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import SupabaseHealthBanner from '@/app/components/SupabaseHealthBanner';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
-import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, syncTeamMembers, syncTeamUsersPassword, updateTeam } from '@/lib/teamsBackend';
+import { deleteMember as deleteMemberBackend, deleteTeamAndMembers, listTeamsWithMembers, syncTeamMembers, syncTeamUsersPassword, updateTeam, upsertAttendance, upsertManyAttendance } from '@/lib/teamsBackend';
+  // Detect if current user is a lead (for disabling editing)
+  const isLeadUser = typeof window !== 'undefined' && localStorage.getItem('userRole') === 'lead';
 import { deleteAllNocForTeam } from '@/lib/nocBackend';
 import { deleteAllPptForTeam } from '@/lib/pptBackend';
 import { listReportingAssignments } from '@/lib/reportingBackend';
@@ -576,7 +578,7 @@ export default function TeamProfilesPage() {
     setSelectedMemberIndex(Math.max(0, Math.min(selectedMemberIndex, updatedMembers.length - 1)));
   };
 
-  const saveTeamAttendance = (teamName: string, value: string) => {
+  const saveTeamAttendance = async (teamName: string, value: string) => {
     if (!value) {
       alert('Please select an attendance status');
       return;
@@ -589,9 +591,12 @@ export default function TeamProfilesPage() {
       delete updated[teamName];
       return updated;
     });
+    // Persist to Supabase
+    const today = new Date().toISOString().slice(0, 10);
+    await upsertAttendance({ teamName, date: today, status: value });
   };
 
-  const saveMemberAttendance = (teamName: string, memberKey: string, value: string) => {
+  const saveMemberAttendance = async (teamName: string, memberKey: string, value: string) => {
     if (!value) {
       alert('Please select an attendance status');
       return;
@@ -604,6 +609,9 @@ export default function TeamProfilesPage() {
       delete updated[key];
       return updated;
     });
+    // Persist to Supabase
+    const today = new Date().toISOString().slice(0, 10);
+    await upsertAttendance({ teamName, memberId: memberKey, date: today, status: value });
   };
 
   const saveMemberDaybreak = (teamName: string, memberKey: string, value: string) => {
@@ -655,27 +663,30 @@ export default function TeamProfilesPage() {
     return String(team?.venue || team?.zone || '').trim();
   };
 
-  const bulkSaveAllAttendance = () => {
+  const bulkSaveAllAttendance = async () => {
     let count = 0;
+    const today = new Date().toISOString().slice(0, 10);
+    const records = [];
     // Save all draft team attendance
-    Object.entries(draftTeamAttendance).forEach(([teamName, value]) => {
+    for (const [teamName, value] of Object.entries(draftTeamAttendance)) {
       if (value) {
-        saveTeamAttendance(teamName, value);
+        await saveTeamAttendance(teamName, value);
+        records.push({ teamName, date: today, status: value });
         count++;
       }
-    });
+    }
     // Save all draft member attendance
-    Object.entries(draftMemberAttendance).forEach(([key, value]) => {
+    for (const [key, value] of Object.entries(draftMemberAttendance)) {
       if (value && key.includes('_')) {
         const parts = key.split('_');
         const teamName = parts[2];
         const memberKey = parts.slice(3).join('_');
-        saveMemberAttendance(teamName, memberKey, value);
+        await saveMemberAttendance(teamName, memberKey, value);
+        records.push({ teamName, memberId: memberKey, date: today, status: value });
         count++;
       }
-    });
-
-    // Save all draft member daybreak updates
+    }
+    // Save all draft member daybreak updates (unchanged)
     Object.entries(draftMemberDaybreak).forEach(([key, value]) => {
       if (value && key.includes('_')) {
         const parts = key.split('_');
@@ -685,7 +696,10 @@ export default function TeamProfilesPage() {
         count++;
       }
     });
-
+    // Bulk upsert to Supabase
+    if (records.length > 0) {
+      await upsertManyAttendance(records);
+    }
     if (count > 0) {
       alert(`Saved ${count} record(s)`);
     } else {
@@ -1187,6 +1201,9 @@ export default function TeamProfilesPage() {
 
     alert('Member deleted');
   };
+
+  // If user is a lead, disable all editing
+  const editingDisabled = isLeadUser;
 
   return (
     <main className="min-h-screen bg-antique p-6">

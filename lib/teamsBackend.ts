@@ -1,3 +1,63 @@
+// Attendance types and backend functions
+export type AttendanceRecord = {
+  id?: string;
+  teamName: string;
+  memberId?: string | null;
+  date: string; // YYYY-MM-DD
+  status: 'Present' | 'Absent';
+  updatedAt?: string;
+};
+
+// Save (upsert) a single attendance record
+export const upsertAttendance = async (record: AttendanceRecord): Promise<boolean> => {
+  if (!isSupabaseConfigured()) return false;
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+  const { error } = await supabase.from('attendance').upsert({
+    team_name: record.teamName,
+    member_id: record.memberId || null,
+    date: record.date,
+    status: record.status,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: 'team_name,member_id,date' });
+  return !error;
+};
+
+// Bulk upsert attendance records
+export const upsertManyAttendance = async (records: AttendanceRecord[]): Promise<boolean> => {
+  if (!isSupabaseConfigured()) return false;
+  const supabase = getSupabaseClient();
+  if (!supabase) return false;
+  if (!records.length) return true;
+  const payload = records.map(r => ({
+    team_name: r.teamName,
+    member_id: r.memberId || null,
+    date: r.date,
+    status: r.status,
+    updated_at: new Date().toISOString(),
+  }));
+  const { error } = await supabase.from('attendance').upsert(payload, { onConflict: 'team_name,member_id,date' });
+  return !error;
+};
+
+// List attendance for a given date (optionally filtered by team or member)
+export const listAttendance = async (date: string, teamName?: string): Promise<AttendanceRecord[]> => {
+  if (!isSupabaseConfigured()) return [];
+  const supabase = getSupabaseClient();
+  if (!supabase) return [];
+  let query = supabase.from('attendance').select('*').eq('date', date);
+  if (teamName) query = query.eq('team_name', teamName);
+  const { data, error } = await query;
+  if (error || !Array.isArray(data)) return [];
+  return data.map((r: any) => ({
+    id: r.id,
+    teamName: r.team_name,
+    memberId: r.member_id,
+    date: r.date,
+    status: r.status,
+    updatedAt: r.updated_at,
+  }));
+};
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
 export type TeamMemberRecord = {
