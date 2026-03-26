@@ -476,6 +476,9 @@ export default function PPTPage() {
               <li>Only PDF format is accepted for PPT submissions.</li>
               <li>Max file size: {MAX_PPT_MB} MB.</li>
               <li>
+                <span className="font-semibold">Submission deadline:</span> 27th March, 2:00 PM
+              </li>
+              <li>
                 PPT must follow the provided template.{' '}
                 <a
                   href="https://docs.google.com/presentation/d/13Pc6TuIQO5G4ng2VBN5cQIZyP_P-J66iF8YBnKzQEa8/edit?usp=sharing"

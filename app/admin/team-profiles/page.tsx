@@ -83,7 +83,6 @@ export default function TeamProfilesPage() {
   ];
 
   const VENUE_OPTIONS = [
-    'Shivaji Auditorium',
     'ICT 105',
     'ICT 106',
     'ICT 107',
@@ -92,7 +91,6 @@ export default function TeamProfilesPage() {
     'ICT 113',
     'ICT 118',
     'ICT 119',
-    'ICT 122',
   ];
 
   const normalizeDomain = (value: any) => {
@@ -1253,7 +1251,7 @@ export default function TeamProfilesPage() {
                   <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Venue</label>
                   <select value={venueFilter} onChange={(e)=>setVenueFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200 text-sm">
                     <option>All</option>
-                    {uniqueVenues.map((v:any)=>(<option key={v}>{v}</option>))}
+                    {VENUE_OPTIONS.map((v:any)=>(<option key={v}>{v}</option>))}
                   </select>
                 </div>
                 <div>
