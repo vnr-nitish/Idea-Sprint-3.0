@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { RichTextEditor } from '@mantine/rte';
+import dynamic from 'next/dynamic';
+const RichTextEditor = dynamic(() => import('@mantine/rte').then(mod => mod.RichTextEditor), { ssr: false });
 import { useRouter } from 'next/navigation';
 import { usePathname } from 'next/navigation';
 import { isSupabaseConfigured } from '@/lib/supabaseClient';
