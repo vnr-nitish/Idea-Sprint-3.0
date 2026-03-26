@@ -349,7 +349,16 @@ export default function AdminPPTPage() {
   const uniqueCampuses = useMemo(() => Array.from(new Set(scopedRegistered.map((r) => r.members?.[0]?.campus).filter(Boolean))), [scopedRegistered]);
   const uniqueDomains = DOMAIN_OPTIONS;
   const uniqueTeamSizes = ['3', '4'];
-  const uniqueVenues = useMemo(() => Array.from(new Set(Object.values(assignments).map((a: any) => a?.venue).filter(Boolean))), [assignments]);
+  const ICT_VENUES = [
+    'ICT 105',
+    'ICT 106',
+    'ICT 107',
+    'ICT 111',
+    'ICT 112',
+    'ICT 113',
+    'ICT 118',
+    'ICT 119',
+  ];
   const uniqueSpocs = useMemo(() => Array.from(new Set(Object.values(assignments).map((a: any) => a?.spoc?.name).filter(Boolean))), [assignments]);
 
   const selectedTeamsCount = useMemo(() => Object.values(selectedTeams).filter(Boolean).length, [selectedTeams]);
@@ -521,7 +530,7 @@ export default function AdminPPTPage() {
             </div>
             <div>
               <label className="block text-xs font-semibold text-gitam-700 mb-1.5">Venue</label>
-              <select value={venueFilter} onChange={(e) => setVenueFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200"><option>All</option>{uniqueVenues.map((v: any) => (<option key={v}>{v}</option>))}</select>
+              <select value={venueFilter} onChange={(e) => setVenueFilter(e.target.value)} className="hh-input w-full border-2 border-gitam-200"><option>All</option>{ICT_VENUES.map((v: any) => (<option key={v}>{v}</option>))}</select>
             </div>
             <div>
               <label className="block text-xs font-semibold text-gitam-700 mb-1.5">SPOC</label>

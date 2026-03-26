@@ -33,7 +33,6 @@ type ReportingAssignment = {
 const SPOCS_KEY = 'reportingSpocs';
 const ASSIGNMENTS_KEY = 'reportingAssignments';
 const VENUE_OPTIONS = [
-  'Shivaji Auditorium',
   'ICT 105',
   'ICT 106',
   'ICT 107',
@@ -42,7 +41,6 @@ const VENUE_OPTIONS = [
   'ICT 113',
   'ICT 118',
   'ICT 119',
-  'ICT 122',
 ];
 
 const readJson = <T,>(key: string, fallback: T): T => {
@@ -360,8 +358,7 @@ export default function AdminSpocPage() {
         .map((t: any) => getZoneForTeam(String(t?.teamName || '')))
         .filter((z) => z && z !== '-')
     ));
-    const extras = zones.filter((z) => !VENUE_OPTIONS.includes(z)).sort();
-    return [...VENUE_OPTIONS, ...extras];
+    return [...VENUE_OPTIONS];
   }, [teams, assignments]);
 
   const getSpocNameForTeam = useCallback((teamName: string): string => {
