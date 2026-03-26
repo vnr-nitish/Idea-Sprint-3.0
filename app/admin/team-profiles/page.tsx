@@ -583,9 +583,12 @@ export default function TeamProfilesPage() {
       alert('Please select an attendance status');
       return;
     }
+    // Only allow 'Present' or 'Absent'
+    const allowed: Array<'Present' | 'Absent'> = ['Present', 'Absent'];
+    const status = allowed.includes(value as any) ? (value as 'Present' | 'Absent') : 'Absent';
     const key = `team_attendance_${teamName}`;
-    localStorage.setItem(key, value);
-    setTeamAttendance((prev) => ({ ...prev, [teamName]: value }));
+    localStorage.setItem(key, status);
+    setTeamAttendance((prev) => ({ ...prev, [teamName]: status }));
     setDraftTeamAttendance((prev) => {
       const updated = { ...prev };
       delete updated[teamName];
@@ -593,7 +596,7 @@ export default function TeamProfilesPage() {
     });
     // Persist to Supabase
     const today = new Date().toISOString().slice(0, 10);
-    await upsertAttendance({ teamName, date: today, status: value });
+    await upsertAttendance({ teamName, date: today, status });
   };
 
   const saveMemberAttendance = async (teamName: string, memberKey: string, value: string) => {
@@ -601,9 +604,12 @@ export default function TeamProfilesPage() {
       alert('Please select an attendance status');
       return;
     }
+    // Only allow 'Present' or 'Absent'
+    const allowed: Array<'Present' | 'Absent'> = ['Present', 'Absent'];
+    const status = allowed.includes(value as any) ? (value as 'Present' | 'Absent') : 'Absent';
     const key = `member_attendance_${teamName}_${memberKey}`;
-    localStorage.setItem(key, value);
-    setMemberAttendance((prev) => ({ ...prev, [key]: value }));
+    localStorage.setItem(key, status);
+    setMemberAttendance((prev) => ({ ...prev, [key]: status }));
     setDraftMemberAttendance((prev) => {
       const updated = { ...prev };
       delete updated[key];
@@ -611,7 +617,7 @@ export default function TeamProfilesPage() {
     });
     // Persist to Supabase
     const today = new Date().toISOString().slice(0, 10);
-    await upsertAttendance({ teamName, memberId: memberKey, date: today, status: value });
+    await upsertAttendance({ teamName, memberId: memberKey, date: today, status });
   };
 
   const saveMemberDaybreak = (teamName: string, memberKey: string, value: string) => {
