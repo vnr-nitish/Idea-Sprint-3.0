@@ -89,3 +89,13 @@ I built a complete hackathon management system that supports:
 ```bash
 npm install
 npm run dev
+```
+
+---
+
+## Author
+
+**Vinnakota Nitish Raj**
+
+LinkedIn: https://linkedin.com/in/vnr-nitish
+
